@@ -631,8 +631,12 @@ $$;
 -- New auth user → profile with a temporary username (chosen during onboarding)
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare wanted text := new.raw_user_meta_data ->> 'username'; uname text;
+declare
+  wanted text := new.raw_user_meta_data ->> 'username'; uname text;
+  -- OAuth providers (Google) supply a profile picture; keep it if it is a safe https URL.
+  pic text := coalesce(new.raw_user_meta_data ->> 'avatar_url', new.raw_user_meta_data ->> 'picture');
 begin
+  if pic is not null and (pic !~ '^https://' or char_length(pic) > 500) then pic := null; end if;
   if wanted ~ '^[A-Za-z0-9_]{3,20}$' and not exists (select 1 from profiles where lower(username) = lower(wanted)) then
     uname := wanted;
   else
@@ -641,8 +645,8 @@ begin
       exit when not exists (select 1 from profiles where lower(username) = lower(uname));
     end loop;
   end if;
-  insert into profiles (id, username, is_demo)
-  values (new.id, uname, coalesce((new.raw_app_meta_data ->> 'partyup_demo')::boolean, false));
+  insert into profiles (id, username, avatar_url, is_demo)
+  values (new.id, uname, pic, coalesce((new.raw_app_meta_data ->> 'partyup_demo')::boolean, false));
   return new;
 end $$;
 drop trigger if exists on_auth_user_created on auth.users;
