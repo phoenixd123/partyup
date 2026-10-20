@@ -1,0 +1,97 @@
+{
+  "name": "partyup",
+  "productName": "PartyUp",
+  "private": true,
+  "version": "1.1.0",
+  "type": "module",
+  "description": "Find compatible teammates, form parties and chat. React + Supabase, with a desktop app.",
+  "author": {
+    "name": "PartyUp",
+    "email": "partyup@users.noreply.github.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phoenixd123/partyup.git"
+  },
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "desktop": "vite build && electron .",
+    "dist": "vite build && electron-builder --publish never",
+    "test:db": "bash tests/reset_db.sh --seed && python3 tests/db_tests.py"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-icons": "^5.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
+    "vite": "^6.0.0"
+  },
+  "build": {
+    "appId": "app.partyup.desktop",
+    "productName": "PartyUp",
+    "artifactName": "PartyUp-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "desktop/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PartyUp"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.social-networking",
+      "identity": null
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Network",
+      "maintainer": "PartyUp"
+    },
+    "publish": null
+  },
+  "homepage": "https://github.com/phoenixd123/partyup"
+}

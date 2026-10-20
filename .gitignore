@@ -1,0 +1,10 @@
+node_modules/
+dist/
+release/
+tests/dist/
+tests/shots/
+__pycache__/
+.env.local
+.env.*.local
+*.log
+.DS_Store
