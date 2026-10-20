@@ -11,6 +11,10 @@ The installers aren't code-signed yet. Windows SmartScreen may say "Windows prot
 
 On first launch the app asks for your Supabase project URL and anon key unless they were built in. See the README for the 5-minute database setup.
 
+## 1.1.1
+
+- Desktop setup screen now gives desktop-specific instructions for keys and email confirmation.
+
 ## What's new in 1.1
 
 - **Communities:** create public or private servers with text and announcement channels, invite codes (expiry and use limits), owner/admin/member roles, kicks, bans, channel management and an Explore page.
