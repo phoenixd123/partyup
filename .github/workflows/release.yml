@@ -1,26 +1,44 @@
 name: Release
 
-# Push a tag like v1.1.0 to build installers for Windows, macOS and Linux and
-# publish them on the Releases page. Optional repository *variables* (not secrets —
+# Builds installers for Windows, macOS and Linux and publishes them on the Releases
+# page. Runs when the version in package.json changes on main (creating tag vX.Y.Z),
+# when a vX.Y.Z tag is pushed, or manually from the Actions tab. Optional repository *variables* (not secrets —
 # these values are public in every build): VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY,
 # VITE_SITE_URL. Without them the app opens its setup screen on first launch.
 on:
   push:
+    branches: [main]
+    paths: [package.json, .github/workflows/release.yml]
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Existing tag to (re)build, e.g. v1.1.0
-        required: true
 
 permissions:
   contents: write
 
-env:
-  TAG: ${{ github.event.inputs.tag || github.ref_name }}
-
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      skip: ${{ steps.v.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$(node -p "require('./package.json').version")"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if gh release view "$TAG" >/dev/null 2>&1 && [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_type }}" = "branch" ]; then
+            echo "Release $TAG already exists; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   desktop:
+    needs: version
+    if: needs.version.outputs.skip != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -29,8 +47,6 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TAG }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -54,13 +70,14 @@ jobs:
             release/*.deb
 
   web:
+    needs: version
+    if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      TAG: ${{ needs.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TAG }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -81,12 +98,12 @@ jobs:
           path: out/*
 
   publish:
-    needs: [desktop, web]
+    needs: [version, desktop, web]
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TAG }}
       - uses: actions/download-artifact@v4
         with:
           path: assets
@@ -99,5 +116,5 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" assets/* --clobber
           else
-            gh release create "$TAG" assets/* --title "PartyUp ${TAG}" --notes-file RELEASE_NOTES.md
+            gh release create "$TAG" assets/* --target "$GITHUB_SHA" --title "PartyUp ${TAG}" --notes-file RELEASE_NOTES.md
           fi
