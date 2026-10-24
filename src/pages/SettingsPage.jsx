@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LuUser, LuCalendarClock, LuUsers, LuLock, LuBell, LuShield, LuKeyRound, LuGamepad2 } from 'react-icons/lu';
 import * as api from '../lib/api.js';
-import { supabase } from '../lib/supabase.js';
+import { supabase, authRedirect } from '../lib/supabase.js';
+import { FcGoogle } from 'react-icons/fc';
+import { LuMail } from 'react-icons/lu';
 import { useApp } from '../context/AppContext.jsx';
 import { useAsync, useDebounced } from '../hooks/useAsync.js';
 import { Link, navigate } from '../lib/router.jsx';
@@ -274,7 +276,7 @@ function AccountSection() {
   const [err, setErr] = useState(null);
   const changeEmail = async (e) => {
     e.preventDefault(); setErr(null); setBusy('email');
-    const { error } = await supabase.auth.updateUser({ email: email.trim() });
+    const { error } = await supabase.auth.updateUser({ email: email.trim() }, { emailRedirectTo: authRedirect() });
     setBusy(null);
     if (error) setErr(error); else toast('Check both inboxes to confirm the new email');
   };
@@ -287,6 +289,8 @@ function AccountSection() {
     setBusy(null);
     if (error) setErr(error); else { setPw(''); setPw2(''); toast('Password updated'); }
   };
+  const providers = user.app_metadata?.providers || [user.app_metadata?.provider].filter(Boolean);
+  const hasPassword = providers.includes('email');
   const del = () => confirm({
     title: 'Delete your account?',
     body: <>This permanently deletes your profile, game profiles, friendships and party memberships. Messages you sent stay in those chats, shown as from a deleted account. Parties you lead pass to another member. <b>This can't be undone.</b></>,
@@ -295,6 +299,15 @@ function AccountSection() {
   });
   return (
     <>
+      <Panel title="Sign-in methods">
+        <div className="form-body">
+          <div className="signin-methods">
+            {hasPassword && <span className="signin-method"><LuMail aria-hidden />Email and password</span>}
+            {providers.includes('google') && <span className="signin-method"><FcGoogle aria-hidden />Google</span>}
+          </div>
+          {!hasPassword && <p className="muted small">You sign in with Google. Add a password below to also sign in with your email address.</p>}
+        </div>
+      </Panel>
       <Panel title="Email">
         <form className="form-body" onSubmit={changeEmail}>
           <p className="muted small">Private — only you can see it.</p>
@@ -302,7 +315,7 @@ function AccountSection() {
           <div><Button type="submit" loading={busy === 'email'} disabled={email.trim() === user.email}>Change email</Button></div>
         </form>
       </Panel>
-      <Panel title="Password">
+      <Panel title={hasPassword ? 'Password' : 'Add a password'}>
         <form className="form-body" onSubmit={changePw}>
           <div className="field-pair">
             <Field label="New password" htmlFor="a-pw"><Input id="a-pw" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} /></Field>

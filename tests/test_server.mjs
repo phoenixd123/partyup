@@ -124,6 +124,11 @@ http.createServer((req, res) => {
     return;
   }
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }); return res.end(); }
+  if (req.url.startsWith('/auth/v1/settings')) {
+    // Same shape as Supabase Auth's public settings endpoint (OAuth providers switched on).
+    res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+    return res.end(JSON.stringify({ external: { email: true, google: process.env.TEST_GOOGLE !== '0' }, mailer_autoconfirm: true }));
+  }
   const file = path.join(DIST, decodeURIComponent(req.url.split('?')[0]) === '/' ? 'index.html' : decodeURIComponent(req.url.split('?')[0]));
   if (!file.startsWith(DIST) || !fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
   res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });

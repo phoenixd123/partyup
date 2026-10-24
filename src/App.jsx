@@ -5,7 +5,12 @@ import { AppProvider, useApp } from './context/AppContext.jsx';
 import { FeedbackProvider } from './components/feedback.jsx';
 import { PageLoader, ErrorState, Button } from './components/ui.jsx';
 import AppShell from './components/layout/AppShell.jsx';
-import SetupPage from './pages/SetupPage.jsx';
+import { lazy, Suspense } from 'react';
+import Logo from './components/Logo.jsx';
+
+// Developer-only screen for pointing a local build at a Supabase project.
+// Release builds have the project baked in and never include or show it.
+const SetupPage = import.meta.env.DEV ? lazy(() => import('./pages/SetupPage.jsx')) : null;
 import { LoginPage, SignupPage, ForgotPage, ResetPage } from './pages/AuthPages.jsx';
 import OnboardingPage from './pages/OnboardingPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
@@ -109,7 +114,19 @@ function Routed() {
 }
 
 export default function App() {
-  if (!isConfigured) return <FeedbackProvider><SetupPage /></FeedbackProvider>;
+  if (!isConfigured) {
+    if (SetupPage) return <FeedbackProvider><Suspense fallback={<PageLoader />}><SetupPage /></Suspense></FeedbackProvider>;
+    return (
+      <div className="center-screen">
+        <div className="empty">
+          <Logo />
+          <h3>PartyUp can't start</h3>
+          <div className="empty-body">This copy of PartyUp was built without its server settings. Download the latest version from the PartyUp releases page.</div>
+          <div className="empty-action"><a className="btn" href="https://github.com/phoenixd123/partyup/releases/latest" target="_blank" rel="noreferrer">Get the latest version</a></div>
+        </div>
+      </div>
+    );
+  }
   return (
     <FeedbackProvider>
       <AppProvider>

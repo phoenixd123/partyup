@@ -47,9 +47,9 @@ Use the **anon / publishable** key from **Project Settings → API**. The app re
 `service_role` or `sb_secret_…` key if you paste one — those bypass every security rule and must
 never be shipped to browsers.
 
-No `.env.local`? The app opens a setup screen that explains these steps and lets you paste the
-URL and anon key for the current browser. Sign-in and every data feature stay disabled until a
-real project is connected.
+No `.env.local`? In development (`npm run dev`) the app opens a setup screen where you can paste
+the URL and anon key for the current browser. Release builds never show that screen: they use the
+project in `.env.production`.
 
 ### 5. Make yourself a moderator (optional)
 Moderator access is never self-service. In the SQL Editor:
@@ -68,11 +68,23 @@ npm install
 npm run desktop   # run the desktop app from source
 npm run dist      # build an installer for your OS into release/
 ```
-To bake your project into release builds, set repository **variables** (Settings → Secrets and
-variables → Actions → Variables) `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and optionally
-`VITE_SITE_URL` (your hosted web version, used for email and invite links, since the desktop
-app runs from local files). Without them, the app shows the setup screen on first launch.
-Push a tag such as `v1.1.0` to publish a new release.
+Release builds connect to the project in `.env.production` (public URL + publishable key; the
+release workflow fails if they're missing). The desktop app registers the `partyup://` link
+scheme: Google sign-in opens in the user's browser and returns to the app through
+`partyup://auth-callback`, and email confirmation / password-reset links do the same. Community
+invite links shared from the desktop app look like `partyup://invite/CODE`.
+Bump `version` in package.json on main to publish a new release.
+
+### Supabase Auth settings for release builds
+In **Authentication → URL Configuration**: set **Site URL** to `partyup://auth-callback` and add
+`partyup://**` (plus `http://localhost:5173/**` for development, and your web host if you deploy
+one) to **Redirect URLs**.
+
+**Google sign-in:** create an OAuth client (type *Web application*) in Google Cloud Console →
+APIs & Services → Credentials, with authorized redirect URI
+`https://<project-ref>.supabase.co/auth/v1/callback`. Paste its client ID and secret into
+**Authentication → Sign In / Providers → Google** and enable it. The Google button appears in the
+app automatically once the provider is on — no new release needed.
 
 Installers aren't code-signed: Windows SmartScreen and macOS Gatekeeper will warn on first
 launch. Add signing certificates to electron-builder when you're ready to distribute widely.
@@ -92,7 +104,7 @@ deployed URL to Supabase's redirect URLs.
 
 | Area | What works |
 |---|---|
-| Auth | Sign up, sign in, sign out, password reset by email, change email/password, delete account (typed confirmation) |
+| Auth | Sign up, sign in, Google sign-in (web and desktop), sign out, password reset by email, change email/password, delete account (typed confirmation) |
 | Onboarding | Username (live availability check), avatar (12 presets or upload), region, languages, platforms, games with rank/role/platform, weekly schedule, mic, playstyle, teammate preferences. Every step after the username can be skipped and edited later |
 | Dashboard | Recommended teammates, your parties, suggested sessions, incoming party invites, friend requests, friends online, recent activity, profile-completion prompts, Find Teammates + Quick Match |
 | Find Players | Filters: game, rank range (per game), role, region, platform, language, mic, playstyle, availability (any / overlaps mine / usually plays now), online now, username search. Sort by best match, most active, recently online. Load more. Empty states name the filters to relax |

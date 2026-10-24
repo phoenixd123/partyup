@@ -2,9 +2,9 @@ name: Release
 
 # Builds installers for Windows, macOS and Linux and publishes them on the Releases
 # page. Runs when the version in package.json changes on main (creating tag vX.Y.Z),
-# when a vX.Y.Z tag is pushed, or manually from the Actions tab. Optional repository *variables* (not secrets —
-# these values are public in every build): VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY,
-# VITE_SITE_URL. Without them the app opens its setup screen on first launch.
+# when a vX.Y.Z tag is pushed, or manually from the Actions tab. The Supabase project
+# URL and publishable key come from .env.production (public values; RLS protects data).
+# The build fails if they are missing, so an installer can never ship without them.
 on:
   push:
     branches: [main]
@@ -55,10 +55,10 @@ jobs:
       - name: Build installer
         run: npm run dist
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
-          VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Check the server settings are baked in
+        shell: bash
+        run: grep -lq "supabase.co" dist/assets/*.js || { echo "::error::Build has no Supabase URL (.env.production)"; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: installer-${{ matrix.os }}
@@ -83,10 +83,7 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: npm run build
-        env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
-          VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
+      - run: grep -lq "supabase.co" dist/assets/*.js
       - name: Package web build and database scripts
         run: |
           mkdir -p out

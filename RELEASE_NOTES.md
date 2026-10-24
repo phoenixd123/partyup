@@ -9,7 +9,14 @@
 
 The installers aren't code-signed yet. Windows SmartScreen may say "Windows protected your PC" — choose **More info → Run anyway**. On macOS, right-click the app and choose **Open** the first time.
 
-On first launch the app asks for your Supabase project URL and anon key unless they were built in. See the README for the 5-minute database setup.
+## 1.2.0
+
+- **Ready to use out of the box:** the app now connects to the PartyUp server automatically. No setup screen.
+- **Sign in with Google**, on the desktop app (finishes in your browser, then returns to PartyUp) and on the web.
+- Email confirmation and password-reset links reopen the desktop app.
+- Invite links shared from the desktop app (`partyup://invite/…`) open the invite in PartyUp.
+- Google accounts start with their Google profile picture. Settings shows your sign-in methods and lets Google users add a password.
+- Clearer error messages for cancelled or expired sign-in links.
 
 ## 1.1.1
 

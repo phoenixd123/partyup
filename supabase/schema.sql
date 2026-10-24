@@ -2992,3 +2992,16 @@ update public.games set genre = v.genre from (values
   ('apex-legends','battle_royale'),('fortnite','battle_royale'),('rocket-league','sports'),('rainbow-six-siege','shooter'),
   ('deadlock','moba'),('minecraft','sandbox'),('call-of-duty','shooter')) v(id, genre)
 where games.id = v.id and games.genre is null;
+
+-- Pin search_path on every remaining PartyUp function (Supabase security advisor 0011).
+do $$
+declare r record;
+begin
+  for r in
+    select p.oid::regprocedure as sig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prokind = 'f' and p.proconfig is null
+      and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+  loop
+    execute format('alter function %s set search_path = public', r.sig);
+  end loop;
+end $$;

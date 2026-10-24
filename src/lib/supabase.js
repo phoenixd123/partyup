@@ -1,14 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Config comes from Vite env vars (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) or,
-// for quick local trials, from values saved on the Setup screen in this browser.
+// Config is baked in at build time from VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
+// (.env.production for release builds). Only development builds (`npm run dev`) can
+// fall back to values saved on the developer Setup screen — shipped builds never
+// show that screen or read saved overrides.
 const STORAGE_KEY = 'partyup.supabase';
 
+const env = (typeof import.meta !== 'undefined' && import.meta.env) || {};
+export const isDevBuild = Boolean(env.DEV);
+
 function readSaved() {
+  if (!isDevBuild) return null;
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch { return null; }
 }
 
-const env = (typeof import.meta !== 'undefined' && import.meta.env) || {};
 const saved = readSaved();
 export const config = {
   url: env.VITE_SUPABASE_URL || saved?.url || '',
@@ -48,9 +53,28 @@ export function clearBrowserConfig() {
   localStorage.removeItem(STORAGE_KEY);
 }
 
-/** URL Supabase should send people back to after email links (confirm / reset). */
+/** Desktop bridge exposed by desktop/preload.cjs (undefined in browsers). */
+export const desktop = typeof window !== 'undefined' ? window.partyupDesktop : undefined;
+export const isDesktop = Boolean(desktop);
+
+/**
+ * Where Supabase sends people back to after Google sign-in and email links
+ * (confirm / reset / email change). The desktop app registers the partyup://
+ * link scheme so those links reopen the app; the web app uses its own address.
+ * No #route here: the PASSWORD_RECOVERY event (not the URL) opens the reset form.
+ */
+export function authRedirect() {
+  if (isDesktop) return 'partyup://auth-callback';
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
+/**
+ * Shareable link to a route (community invites). The desktop app runs from
+ * file://, which nobody else can open, so it shares partyup:// links that open
+ * PartyUp on the recipient's computer — or the hosted web app if VITE_SITE_URL is set.
+ */
 export function appUrl(hashPath = '/') {
-  // The desktop app runs from file://, which email links can't open — use the hosted site if one is configured.
-  const site = env.VITE_SITE_URL || (window.location.protocol === 'file:' ? '' : `${window.location.origin}${window.location.pathname}`);
-  return site ? `${site.replace(/#.*$/, '')}#${hashPath}` : `#${hashPath}`;
+  if (window.location.protocol !== 'file:') return `${window.location.origin}${window.location.pathname}#${hashPath}`;
+  if (env.VITE_SITE_URL) return `${env.VITE_SITE_URL.replace(/#.*$/, '')}#${hashPath}`;
+  return `partyup:/${hashPath}`;
 }

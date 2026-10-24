@@ -745,6 +745,14 @@ input[type="datetime-local"], input[type="color"] { color-scheme: dark; }
 .auth-card h1 { font-size: 1.5rem; }
 .auth-logo-m { display: none; }
 .auth-foot { font-size: .86rem; color: var(--muted); }
+.btn-oauth { width: 100%; justify-content: center; }
+.btn-oauth svg { width: 18px; height: 18px; }
+.or-sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .8rem; }
+.or-sep::before, .or-sep::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.stack-xs { display: flex; flex-direction: column; gap: 8px; }
+.signin-methods { display: flex; flex-wrap: wrap; gap: 8px; }
+.signin-method { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: .84rem; }
+.signin-method svg { width: 15px; height: 15px; }
 .center-screen { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 20px; gap: 10px; }
 .setup { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 28px 16px; }
 .setup-card { width: 100%; max-width: 620px; display: flex; flex-direction: column; gap: 16px; padding: 26px; border-radius: var(--r-lg); background: var(--panel); border: 1px solid var(--line); }
