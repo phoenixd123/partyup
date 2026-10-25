@@ -9,6 +9,12 @@
 
 The installers aren't code-signed yet. Windows SmartScreen may say "Windows protected your PC" — choose **More info → Run anyway**. On macOS, right-click the app and choose **Open** the first time.
 
+## 1.5.0
+
+- **Watch:** a new page with live Twitch and YouTube streams plus the week's top clips and videos for every game. Pick a game, filter by platform, and play anything right inside PartyUp in a theater player. Lists refresh by themselves every couple of minutes.
+- "Watch live" shortcuts in every game's official community and on your game profiles.
+- The desktop app now runs from a private local address so streaming players work. You'll need to sign in once after updating.
+
 ## 1.4.0
 
 - **Ready Now beacons:** tap "I'm ready to play", pick a game and how long you're free. You show up on the live Ready Now board, and friends who play that game get a ping. See who's free right now, how well you fit, and message them in one click.

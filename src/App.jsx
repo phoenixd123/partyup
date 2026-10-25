@@ -1,3 +1,4 @@
+import WatchPage from './pages/WatchPage.jsx';
 import ReadyNowPage from './pages/ReadyNowPage.jsx';
 import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import { useEffect } from 'react';
@@ -55,6 +56,8 @@ const ROUTES = [
   ['/tournaments/agreement', TournamentAgreementPage],
   ['/tournaments/:id', TournamentPage],
   ['/ready', ReadyNowPage],
+  ['/watch', WatchPage],
+  ['/watch/:game', WatchPage],
   ['/leaderboard', LeaderboardPage],
   ['/friends', FriendsPage],
   ['/messages', MessagesPage],

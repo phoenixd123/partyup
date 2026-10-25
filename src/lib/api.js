@@ -234,3 +234,15 @@ export const endorsableTeammates = () => rpc('endorsable_teammates');
 export const setBeacon = (game, minutes, note) => rpc('set_beacon', { p_game: game, p_minutes: minutes, p_note: note || '' });
 export const clearBeacon = () => rpc('clear_beacon');
 export const listBeacons = (game) => rpc('list_beacons', { p_game: game || null });
+
+// ---------- Watch (Twitch / YouTube via the "media" Edge Function) ----------
+export async function getMedia(game) {
+  const { data, error } = await supabase.functions.invoke('media', { body: { game } });
+  if (error) {
+    let msg = error.message;
+    try { const body = await error.context?.json?.(); if (body?.error) msg = body.error; } catch { /* ignore */ }
+    if (/Failed to send|fetch|404/i.test(msg)) msg = "The Watch service isn't reachable right now.";
+    throw new ApiError(msg);
+  }
+  return data;
+}

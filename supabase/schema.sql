@@ -4108,6 +4108,26 @@ begin
   end loop;
 end $$;
 
+
+-- #############################################################################
+-- v5: WATCH — cached Twitch / YouTube listings per game
+-- Filled only by the "media" Edge Function (service role), which holds the API
+-- keys. Signed-in users may read it; nobody can write it through the API.
+-- #############################################################################
+create table if not exists public.media_cache (
+  game_id     text not null,
+  kind        text not null check (kind in ('twitch_live','twitch_clips','youtube_live','youtube_top','twitch_category','quota')),
+  payload     jsonb not null default '[]',
+  fetched_at  timestamptz not null default now(),
+  error       text,
+  primary key (game_id, kind)
+);
+alter table public.media_cache enable row level security;
+revoke all on public.media_cache from anon, authenticated;
+grant select on public.media_cache to authenticated;
+drop policy if exists media_cache_read on public.media_cache;
+create policy media_cache_read on public.media_cache for select to authenticated using (kind not in ('quota','twitch_category'));
+
 -- Pin search_path on every remaining PartyUp function (Supabase security advisor 0011).
 do $$
 declare r record;

@@ -69,12 +69,12 @@ export function authRedirect() {
 }
 
 /**
- * Shareable link to a route (community invites). The desktop app runs from
- * file://, which nobody else can open, so it shares partyup:// links that open
+ * Shareable link to a route (community invites). The desktop app runs from a
+ * local address nobody else can open, so it shares partyup:// links that open
  * PartyUp on the recipient's computer — or the hosted web app if VITE_SITE_URL is set.
  */
 export function appUrl(hashPath = '/') {
-  if (window.location.protocol !== 'file:') return `${window.location.origin}${window.location.pathname}#${hashPath}`;
+  if (!isDesktop && window.location.protocol !== 'file:') return `${window.location.origin}${window.location.pathname}#${hashPath}`;
   if (env.VITE_SITE_URL) return `${env.VITE_SITE_URL.replace(/#.*$/, '')}#${hashPath}`;
   return `partyup:/${hashPath}`;
 }

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   LuHouse, LuSearch, LuUsers, LuUserPlus, LuMessageCircle, LuGamepad2, LuSettings, LuShieldCheck, LuBell, LuLogOut,
   LuChevronDown, LuCheck, LuMenu, LuX, LuZap, LuPlus, LuCompass, LuHash, LuMegaphone, LuLink, LuDoorOpen, LuBellOff,
-  LuSmile, LuUser, LuVolume2, LuMicOff, LuBadgeCheck, LuTrophy, LuRadio, LuCrown,
+  LuSmile, LuUser, LuVolume2, LuMicOff, LuBadgeCheck, LuTrophy, LuRadio, LuCrown, LuTv,
 } from 'react-icons/lu';
 import { useCall } from '../../context/CallContext.jsx';
 import * as api from '../../lib/api.js';
@@ -36,6 +36,7 @@ const HOME_NAV = (counts, roles) => [
   { to: '/players', label: 'Find Players', icon: LuSearch },
   { to: '/parties', label: 'Parties', icon: LuUsers, badge: counts.party_invites },
   { to: '/ready', label: 'Ready Now', icon: LuRadio },
+  { to: '/watch', label: 'Watch', icon: LuTv },
   { to: '/tournaments', label: 'Tournaments', icon: LuTrophy },
   { to: '/leaderboard', label: 'Leaderboard', icon: LuCrown },
   { to: '/friends', label: 'Friends', icon: LuUserPlus, badge: counts.friend_requests },
@@ -156,6 +157,7 @@ function CommunitySidebar({ path }) {
       <div className="side-scroll">
         {c.is_demo && <p className="small muted pad-x" style={{ padding: '6px 8px' }}><DemoBadge /> Sample community</p>}
         {c.is_official && <p className="small muted pad-x official-note"><LuBadgeCheck aria-hidden /> Official PartyUp community</p>}
+        {c.game && <Link to={`/watch/${c.game.id}`} className="side-link watch-link"><LuTv aria-hidden /><span className="lbl">Watch {c.game.short_name || c.game.name} live</span><span className="live-dot" aria-hidden /></Link>}
         <div className="side-section"><span>Text channels</span>{admin && <IconButton icon={LuPlus} label="Create channel" onClick={() => setCreating(true)} />}</div>
         {c.channels.filter((ch) => ch.kind !== 'voice').map((ch) => {
           const to = `/c/${c.id}/${ch.id}`;
@@ -347,7 +349,7 @@ export default function AppShell({ path, children }) {
   const community = useCommunityData(communityId);
   const suspended = profile.suspended_until && new Date(profile.suspended_until) > new Date();
   const nav = HOME_NAV(counts, roles);
-  const bottom = [nav[0], nav[3], nav[2], nav[7], nav[4]];
+  const bottom = [nav[0], nav[4], nav[2], nav[8], nav[3]];
 
   return (
     <CommunityCtx.Provider value={{ community }}>

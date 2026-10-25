@@ -1,3 +1,4 @@
+import { LuTv } from 'react-icons/lu';
 import GameIcon from '../components/GameIcon.jsx';
 import { LuMessagesSquare } from 'react-icons/lu';
 import { useState } from 'react';
@@ -68,6 +69,7 @@ export default function GameProfilesPage() {
                   <div className="row gap-s gp-actions">
                     <Button size="sm" icon={LuPencil} onClick={() => setEditing({ gp })}>Edit</Button>
                     <Button size="sm" variant="ghost" icon={LuMessagesSquare} onClick={() => openCommunity(g)}>Community</Button>
+                    <Button size="sm" variant="ghost" icon={LuTv} onClick={() => navigate(`/watch/${g.id}`)}>Watch</Button>
                     <Button size="sm" variant="danger-ghost" icon={LuTrash2} onClick={() => remove(gp)}>Remove</Button>
                   </div>
                 </article>

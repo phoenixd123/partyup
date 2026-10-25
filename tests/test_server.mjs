@@ -126,6 +126,20 @@ function allowed(topic, token) {
   return r.data === true;
 }
 
+function mediaFixture(game) {
+  const img = (c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="440" height="248"><rect width="100%" height="100%" fill="${c}"/></svg>`)}`;
+  return {
+    game, configured: { twitch: true, youtube: true }, twitch_category: game, updated: new Date().toISOString(),
+    twitch_live: [
+      { id: 't1', channel: 'testchannel', name: 'TestChannel', title: `Ranked grind — ${game}`, viewers: 15230, language: 'en', started_at: new Date(Date.now() - 3600e3).toISOString(), thumbnail: img('#6441a5') },
+      { id: 't2', channel: 'second', name: 'SecondStreamer', title: 'Chill games with chat', viewers: 830, language: 'en', started_at: new Date().toISOString(), thumbnail: img('#3a2a66') },
+    ],
+    twitch_clips: [{ id: 'ClipSlug1', channel: 'TestChannel', title: 'insane 1v4 clutch', views: 98000, created_at: new Date().toISOString(), duration: 28, thumbnail: img('#7a5bd1') }],
+    youtube_live: [{ id: 'ytlive1', title: 'LIVE tournament day', channel: 'YT Caster', published_at: new Date().toISOString(), thumbnail: img('#c4302b'), views: 0, viewers: 4200 }],
+    youtube_top: [{ id: 'yttop1', title: 'Top 10 plays this week', channel: 'Highlights', published_at: new Date().toISOString(), thumbnail: img('#a12720'), views: 1250000, viewers: 0 }],
+  };
+}
+
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
 http.createServer((req, res) => {
   if (req.method === 'POST') {
@@ -143,6 +157,9 @@ http.createServer((req, res) => {
             }
             out = { data: 'ok' };
           }
+        } else if (req.url === '/functions/media') {
+          // Stand-in for the media Edge Function: fixed listings so the Watch UI can be tested offline.
+          out = b.token ? { data: mediaFixture(b.game) } : { error: { message: 'unauthorized' } };
         } else if (req.url === '/rpc') out = handleRpc(b);
         else if (req.url === '/query') out = handleQuery(b);
         else if (req.url.startsWith('/auth/')) out = handleAuth(req.url.slice(6), b);

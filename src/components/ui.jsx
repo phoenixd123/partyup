@@ -1,4 +1,4 @@
-import { LuSearch, LuUsers, LuPartyPopper, LuHeartHandshake, LuGamepad2, LuBell, LuSettings, LuZap, LuTrophy, LuSwords, LuCompass, LuShieldCheck, LuScale, LuMessageCircle } from 'react-icons/lu';
+import { LuSearch, LuUsers, LuPartyPopper, LuHeartHandshake, LuGamepad2, LuBell, LuSettings, LuZap, LuTrophy, LuSwords, LuCompass, LuShieldCheck, LuScale, LuMessageCircle, LuCrown, LuRadio } from 'react-icons/lu';
 import { FunLoader } from './Seasonal.jsx';
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -226,7 +226,7 @@ export function Menu({ trigger, items, align = 'right' }) {
 const HEADER_ICONS = {
   'Find Players': LuSearch, Parties: LuUsers, 'Create a party': LuPartyPopper, Friends: LuHeartHandshake, 'Game Profiles': LuGamepad2,
   Notifications: LuBell, Settings: LuSettings, 'Quick Match': LuZap, Tournaments: LuTrophy, 'Host a tournament': LuSwords,
-  'Explore communities': LuCompass, Moderation: LuShieldCheck, 'PartyUp Tournament Agreement': LuScale, Messages: LuMessageCircle,
+  'Explore communities': LuCompass, Leaderboard: LuCrown, 'Ready Now': LuRadio, Moderation: LuShieldCheck, 'PartyUp Tournament Agreement': LuScale, Messages: LuMessageCircle,
 };
 
 export function PageHeader({ title, sub, actions, children, icon }) {

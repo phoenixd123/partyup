@@ -343,11 +343,32 @@ with sync_playwright() as p:
     shot(ava, "14-leaderboard")
     step("XP bar, daily quest claim, leaderboard podium")
 
+
+    print("Watch")
+    ava.route(re.compile(r"https://(player|clips)\.twitch\.tv/.*|https://www\.youtube-nocookie\.com/.*"), lambda r: r.fulfill(status=200, content_type="text/html", body="<html><body style='background:#000'></body></html>"))
+    ava.goto(BASE + "#/watch/valorant")
+    expect(ava.get_by_role("heading", name="Watch")).to_be_visible()
+    expect(ava.locator(".media-card")).to_have_count(3)
+    expect(ava.locator(".media-card").first).to_contain_text("Ranked grind")
+    ava.locator(".media-card").first.click()
+    frame = ava.locator(".theater iframe")
+    expect(frame).to_have_attribute("src", re.compile(r"player\.twitch\.tv/\?channel=testchannel&parent=localhost"))
+    ava.get_by_role("radiogroup", name="Section").get_by_role("radio", name=re.compile("Top this week")).click()
+    expect(ava.locator(".media-card")).to_have_count(2)
+    ava.get_by_role("radiogroup", name="Platform").get_by_role("radio", name="YouTube").click()
+    expect(ava.locator(".media-card")).to_have_count(1)
+    ava.locator(".media-card").first.click()
+    expect(frame).to_have_attribute("src", re.compile(r"youtube-nocookie\.com/embed/yttop1"))
+    shot(ava, "15-watch")
+    ava.goto(BASE + f"#/c/{val}")
+    expect(ava.get_by_role("link", name=re.compile("Watch VAL live"))).to_be_visible()
+    step("Watch page: live + top lists per game, Twitch/YouTube embeds in a theater, linked from the game community")
+
     print("Mobile layout")
     m = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True).new_page(); watch(m, "mobile")
     m.goto(BASE); m.evaluate("t => localStorage.setItem('shim.session', t)", ava.evaluate("localStorage.getItem('shim.session')"))
     m.reload()
-    for route in ["#/ready", "#/leaderboard", "#/", "#/tournaments", "#/tournaments/new", f"#/tournaments/{tid}", "#/settings/style", f"#/c/{val}/{lobby}", "#/explore", "#/tournaments/agreement"]:
+    for route in ["#/watch/valorant", "#/ready", "#/leaderboard", "#/", "#/tournaments", "#/tournaments/new", f"#/tournaments/{tid}", "#/settings/style", f"#/c/{val}/{lobby}", "#/explore", "#/tournaments/agreement"]:
         m.goto(BASE + route); m.wait_for_timeout(800)
         wide = m.evaluate("[...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && !e.closest('.nav-drawer,.filters,.toasts,.settings-nav,.side-panel,.season-decor,.bracket,.segmented')).slice(0,3).map(e => e.className || e.tagName)")
         assert not wide, f"overflow at {route}: {wide}"

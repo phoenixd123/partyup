@@ -81,6 +81,13 @@ reset, email change) are in `supabase/email-templates/` — paste them into **Au
 Emails → Templates**. Supabase's built-in mailer only delivers to your own team's addresses, so add
 a custom SMTP sender (Authentication → Emails → SMTP Settings) before launching to the public.
 
+### Watch (Twitch & YouTube)
+Listings come from the `media` Edge Function (`supabase/functions/media`), which caches results in
+`media_cache` so API keys stay on the server and quota is shared. Add these secrets in Supabase →
+Edge Functions → Secrets: `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` (dev.twitch.tv → Console →
+Register Your Application) and `YOUTUBE_API_KEY` (Google Cloud → enable "YouTube Data API v3" →
+Credentials → API key). Either platform can be left out.
+
 ### Calls
 Voice/video calls are peer-to-peer WebRTC with signaling over private Supabase Realtime channels
 (authorized by policies on `realtime.messages`). Public STUN servers are used by default. Some

@@ -98,6 +98,12 @@ export function createClient(url) {
       return ch;
     },
     removeChannel: (ch) => { ch?._close?.(); },
+    functions: {
+      invoke: async (name, { body } = {}) => {
+        const r = await post(`/functions/${name}`, body || {});
+        return r.error ? { data: null, error: { message: r.error.message } } : { data: r.data, error: null };
+      },
+    },
     storage: {
       from: () => ({
         upload: async () => ({ data: null, error: { message: 'Storage is not available in the local test harness' } }),

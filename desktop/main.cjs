@@ -1,11 +1,45 @@
-// PartyUp desktop shell (Electron). Loads the built web app from disk; all data
-// goes to the Supabase project baked into the build.
+// PartyUp desktop shell (Electron). Serves the built web app from a loopback-only
+// local server; all data goes to the Supabase project baked into the build.
 //
 // Sign-in links (Google sign-in, email confirmation, password reset) come back as
 // partyup://auth-callback?code=… — the app registers that scheme with the OS and
 // hands the link to the page, which finishes sign-in with Supabase (PKCE).
 const { app, BrowserWindow, shell, Menu, ipcMain, session, desktopCapturer } = require('electron');
 const path = require('node:path');
+const http = require('node:http');
+const fs = require('node:fs');
+
+// The app is served from a tiny local web server (loopback only) instead of file://.
+// Twitch and YouTube players refuse to run inside file:// pages, and a fixed port
+// keeps your sign-in (stored per origin) between launches.
+const DIST = path.join(__dirname, '..', 'dist');
+const PREFERRED_PORT = 47823;
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.ico': 'image/x-icon', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2', '.txt': 'text/plain' };
+let appOrigin = null;
+
+function startServer() {
+  const server = http.createServer((req, res) => {
+    let rel;
+    try { rel = decodeURIComponent(new URL(req.url, 'http://localhost').pathname); } catch { res.writeHead(400); return res.end(); }
+    if (rel === '/' || rel === '') rel = '/index.html';
+    const file = path.normalize(path.join(DIST, rel));
+    if (!file.startsWith(DIST + path.sep)) { res.writeHead(403); return res.end(); }
+    fs.readFile(file, (err, data) => {
+      if (err) { res.writeHead(404); return res.end('Not found'); }
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+      res.end(data);
+    });
+  });
+  return new Promise((resolve, reject) => {
+    server.once('error', (e) => {
+      if (e.code !== 'EADDRINUSE') return reject(e);
+      server.listen(0, '127.0.0.1', () => resolve(server.address().port)); // fall back to any free port
+    });
+    server.listen(PREFERRED_PORT, '127.0.0.1', () => resolve(server.address().port));
+  });
+}
+const isAppUrl = (url) => !!appOrigin && (url === appOrigin || url.startsWith(`${appOrigin}/`));
 
 const SCHEME = 'partyup';
 const isExternal = (url) => /^https:\/\//i.test(url) || /^http:\/\//i.test(url);
@@ -59,14 +93,14 @@ function createWindow() {
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith('file://')) {
+    if (!isAppUrl(url)) {
       event.preventDefault();
       if (isExternal(url)) shell.openExternal(url);
     }
   });
   mainWindow.on('closed', () => { mainWindow = null; });
 
-  mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  mainWindow.loadURL(`${appOrigin}/`);
 }
 
 ipcMain.handle('partyup:open-external', (_event, url) => {
@@ -97,14 +131,15 @@ if (!app.requestSingleInstanceLock()) {
   const launchUrl = process.argv.find(isAuthCallback);
   if (launchUrl) pendingCallback = launchUrl;
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
+    appOrigin = `http://localhost:${await startServer()}`;
     // Calls: allow the microphone, camera and screen sharing for the app's own pages only.
     const ALLOWED = new Set(['media', 'display-capture', 'notifications', 'clipboard-sanitized-write', 'fullscreen']);
     session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
-      cb(ALLOWED.has(permission) && String(details?.requestingUrl || wc.getURL()).startsWith('file://'));
+      cb(ALLOWED.has(permission) && isAppUrl(String(details?.requestingUrl || wc.getURL())));
     });
-    session.defaultSession.setPermissionCheckHandler((wc, permission, origin) => ALLOWED.has(permission) && (!origin || origin === 'file://' || origin.startsWith('file:')));
+    session.defaultSession.setPermissionCheckHandler((wc, permission, origin) => ALLOWED.has(permission) && (!origin || isAppUrl(origin) || origin === appOrigin));
     session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
       desktopCapturer.getSources({ types: ['screen', 'window'] })
         .then((sources) => callback(sources.length ? { video: sources[0] } : {}))
