@@ -3,6 +3,7 @@ import { LuMic, LuMicOff, LuMessageSquareText, LuInfo, LuMonitor, LuGamepad2, Lu
 import { cx, Modal } from './ui.jsx';
 import { platformLabel } from '../lib/constants.js';
 import { presence } from '../lib/format.js';
+import { gameGlyph } from './GameIcon.jsx';
 
 // ---------- Avatar ----------
 const PRESETS = [
@@ -40,12 +41,20 @@ export function Avatar({ user, size = 40, status, className }) {
     const bg = INITIAL_COLORS[hash(name) % INITIAL_COLORS.length];
     inner = <span className="avatar-initials" style={{ background: bg, fontSize: size * 0.4 }}>{name.slice(0, 1).toUpperCase()}</span>;
   }
+  const deco = user?.avatar_decoration && user.avatar_decoration !== 'none' && size >= 20 ? user.avatar_decoration : null;
   return (
-    <span className={cx('avatar', className)} style={{ width: size, height: size }} role="img" aria-label={name}>
+    <span className={cx('avatar', deco && 'has-deco', className)} style={{ width: size, height: size }} role="img" aria-label={name}>
       {inner}
+      {deco && <span className={`avatar-deco deco-${deco}`} aria-hidden style={{ fontSize: size }} />}
       {status && <StatusDot status={status} className="avatar-dot" />}
     </span>
   );
+}
+
+/** Username with the player's chosen name style (gradient / glow). */
+export function Name({ user, children, className }) {
+  const style = user?.name_style && user.name_style !== 'plain' ? user.name_style : null;
+  return <span className={cx(style && `name-style ns-${style}`, className)}>{children ?? user?.username}</span>;
 }
 
 export function StatusDot({ status = 'offline', className }) {
@@ -61,7 +70,7 @@ export function GameTag({ game, rank, role, compact }) {
   const color = game.accent_color || '#8b5cf6';
   return (
     <span className={cx('game-tag', compact && 'compact')} style={{ '--gc': color }}>
-      <span className="game-mark">{game.short_name || game.name?.slice(0, 3)}</span>
+      <span className="game-mark">{(() => { const G = gameGlyph(game); return <G aria-hidden className="game-mark-ico" />; })()}{game.short_name || game.name?.slice(0, 3)}</span>
       {!compact && <span className="game-name">{game.name}</span>}
       {rank && <span className="game-rank" title="Self-reported rank">{rank}</span>}
       {role && <span className="game-role">{role}</span>}

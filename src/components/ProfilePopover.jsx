@@ -4,7 +4,8 @@ import { LuMessageCircle, LuUser } from 'react-icons/lu';
 import * as api from '../lib/api.js';
 import { navigate } from '../lib/router.jsx';
 import { useApp } from '../context/AppContext.jsx';
-import { Avatar, Presence } from './gaming.jsx';
+import { Avatar, Name, Presence } from './gaming.jsx';
+import { bannerBackground, ProfileEffect, themeVars } from './ProfileFx.jsx';
 import { Button, DemoBadge } from './ui.jsx';
 import { useToast } from './feedback.jsx';
 
@@ -38,14 +39,14 @@ export default function ProfilePopover({ user, x, y, onClose }) {
     catch (e) { toast(e, 'error'); setBusy(false); }
   };
   return createPortal(
-    <div className="pop-card" ref={ref} style={pos} role="dialog" aria-label={`${user.username} profile card`}>
-      <div className="pop-band" style={{ background: '#2a2c31' }} />
+    <div className={`pop-card${user.theme_color ? ' themed' : ''}`} ref={ref} style={{ ...pos, ...themeVars(user) }} role="dialog" aria-label={`${user.username} profile card`}>
+      <div className="pop-band" style={{ background: bannerBackground(user) }}><ProfileEffect effect={user.profile_effect} /></div>
       <div className="pop-body">
         <Avatar user={user} size={64} status={user.status} />
         <div>
-          <div className="pop-name">{user.username} {user.is_demo && <DemoBadge />}</div>
+          <div className="pop-name"><Name user={user} /> {user.is_demo && <DemoBadge />}</div>
           {user.role && ROLE[user.role] && <span className="badge">{ROLE[user.role]}</span>}
-          {user.custom_status && <div className="custom-status">{user.custom_status}</div>}
+          {(user.custom_status || user.status_emoji) && <div className="custom-status">{user.status_emoji} {user.custom_status}</div>}
           {user.status !== undefined && <Presence user={user} />}
         </div>
         <div className="pop-row">

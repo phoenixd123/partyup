@@ -3,7 +3,11 @@ import { LuUser, LuCalendarClock, LuUsers, LuLock, LuBell, LuShield, LuKeyRound,
 import * as api from '../lib/api.js';
 import { supabase, authRedirect } from '../lib/supabase.js';
 import { FcGoogle } from 'react-icons/fc';
-import { LuMail } from 'react-icons/lu';
+import { LuMail, LuSparkles, LuUpload } from 'react-icons/lu';
+import { BANNER_PRESETS, NAME_STYLES, DECORATIONS, EFFECTS, bannerBackground, ProfileEffect, themeVars } from '../components/ProfileFx.jsx';
+import { Name } from '../components/gaming.jsx';
+import { useRef } from 'react';
+import { getFlavorPrefs, setFlavorPref } from '../lib/flavor.js';
 import { useApp } from '../context/AppContext.jsx';
 import { useAsync, useDebounced } from '../hooks/useAsync.js';
 import { Link, navigate } from '../lib/router.jsx';
@@ -20,6 +24,7 @@ import { useConfirm, useToast } from '../components/feedback.jsx';
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: LuUser },
+  { id: 'style', label: 'Profile style', icon: LuSparkles },
   { id: 'availability', label: 'Availability', icon: LuCalendarClock },
   { id: 'teammates', label: 'Teammate preferences', icon: LuUsers },
   { id: 'privacy', label: 'Privacy', icon: LuLock },
@@ -73,6 +78,7 @@ export default function SettingsPage({ params }) {
         </nav>
         <div className="settings-body">
           {tab === 'profile' && <ProfileSection />}
+          {tab === 'style' && <StyleSection />}
           {tab === 'availability' && <AvailabilitySection />}
           {tab === 'teammates' && <TeammatesSection />}
           {tab === 'privacy' && <PrivacySection />}
@@ -265,6 +271,100 @@ function SafetySection() {
   );
 }
 
+const STATUS_EMOJI = ['', '🎮', '🔥', '🏆', '🎧', '😴', '🍕', '👻', '🎃', '💀', '⚔️', '🚀', '🌙', '💜'];
+
+function StyleSection() {
+  const { profile, userId } = useApp();
+  const form = useProfileForm(['banner_url', 'theme_color', 'theme_color_2', 'name_style', 'avatar_decoration', 'profile_effect', 'status_emoji']);
+  const { v, set } = form;
+  const file = useRef(null);
+  const [upBusy, setUpBusy] = useState(false);
+  const [upErr, setUpErr] = useState(null);
+  const preview = { ...profile, ...v };
+  const upload = async (e) => {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f) return;
+    setUpBusy(true); setUpErr(null);
+    try { set('banner_url')(await api.uploadBanner(userId, f)); } catch (ex) { setUpErr(ex); } finally { setUpBusy(false); }
+  };
+  const pick = (list, key, label) => (
+    <Field label={label}>
+      <div className="style-grid" role="radiogroup" aria-label={label}>
+        {list.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={v[key] === o.value} className={cx('style-opt', v[key] === o.value && 'on')} onClick={() => set(key)(o.value)}>
+            {key === 'name_style' ? <Name user={{ name_style: o.value }}>{o.label}</Name>
+              : key === 'avatar_decoration' ? <><Avatar user={{ ...profile, avatar_decoration: o.value }} size={36} /><small>{o.label}</small></>
+              : <><span className="fx-swatch"><ProfileEffect effect={o.value} /></span><small>{o.label}</small></>}
+          </button>
+        ))}
+      </div>
+    </Field>
+  );
+  return (
+    <>
+      <Panel title="Preview">
+        <div className={`style-preview${preview.theme_color ? ' themed' : ''}`} style={themeVars(preview)}>
+          <div className="style-preview-band" style={{ background: bannerBackground(preview) }}><ProfileEffect effect={preview.profile_effect} /></div>
+          <div className="style-preview-body">
+            <Avatar user={preview} size={72} status="online" />
+            <div><div className="pop-name"><Name user={preview} /></div>
+              <div className="custom-status">{preview.status_emoji} {preview.custom_status || 'Your custom status shows here'}</div></div>
+          </div>
+        </div>
+        <p className="muted small">All of this is free. Animated GIF avatars and banners play everywhere your profile shows.</p>
+      </Panel>
+      <Panel title="Banner & theme">
+        <div className="form-body">
+          <div className="banner-presets" role="radiogroup" aria-label="Banner">
+            <button type="button" role="radio" aria-checked={!v.banner_url} className={cx('banner-opt', !v.banner_url && 'on')} onClick={() => set('banner_url')(null)}
+              style={{ background: v.theme_color ? `linear-gradient(120deg, ${v.theme_color}, ${v.theme_color_2 || v.theme_color})` : '#2a2c31' }}><small>Theme colours</small></button>
+            {BANNER_PRESETS.map((b) => (
+              <button key={b.id} type="button" role="radio" aria-checked={v.banner_url === b.id} className={cx('banner-opt', v.banner_url === b.id && 'on')}
+                style={{ background: b.css }} onClick={() => set('banner_url')(b.id)}><small>{b.name}</small></button>
+            ))}
+          </div>
+          <div className="row gap-s wrap">
+            <Button size="sm" icon={LuUpload} loading={upBusy} onClick={() => file.current?.click()}>Upload banner (GIF works)</Button>
+            <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={upload} />
+            <label className="color-field">Theme <input type="color" value={v.theme_color || '#f26b38'} onChange={(e) => set('theme_color')(e.target.value)} aria-label="Primary theme colour" /></label>
+            <label className="color-field">Accent <input type="color" value={v.theme_color_2 || v.theme_color || '#b3245b'} onChange={(e) => set('theme_color_2')(e.target.value)} aria-label="Secondary theme colour" /></label>
+            {(v.theme_color || v.theme_color_2) && <Button size="sm" variant="ghost" onClick={() => { set('theme_color')(null); set('theme_color_2')(null); }}>Clear colours</Button>}
+          </div>
+          <InlineError error={upErr} />
+        </div>
+      </Panel>
+      <Panel title="Name, avatar & effects">
+        <div className="form-body">
+          {pick(NAME_STYLES, 'name_style', 'Name style')}
+          {pick(DECORATIONS, 'avatar_decoration', 'Avatar decoration')}
+          {pick(EFFECTS, 'profile_effect', 'Profile effect')}
+          <Field label="Status emoji">
+            <div className="emoji-row" role="radiogroup" aria-label="Status emoji">
+              {STATUS_EMOJI.map((e) => (
+                <button key={e || 'none'} type="button" role="radio" aria-checked={v.status_emoji === e} className={cx('emoji-opt', v.status_emoji === e && 'on')} onClick={() => set('status_emoji')(e)}>{e || '∅'}</button>
+              ))}
+            </div>
+          </Field>
+        </div>
+      </Panel>
+      <SaveBar form={form} />
+    </>
+  );
+}
+
+function FunPanel() {
+  const [p, setP] = useState(() => getFlavorPrefs());
+  const set = (k) => (v) => { setFlavorPref(k, v); setP(getFlavorPrefs()); };
+  return (
+    <Panel title="Fun stuff">
+      <div className="form-body">
+        <Toggle checked={p.seasonal} onChange={set('seasonal')} label="Seasonal decorations" hint="Pumpkins, bats and spooky tips in October. Saved on this device." />
+        <Toggle checked={p.tips} onChange={set('tips')} label="Tips and fun facts on loading screens" />
+      </div>
+    </Panel>
+  );
+}
+
 function AccountSection() {
   const { user, profile, signOut } = useApp();
   const toast = useToast();
@@ -278,7 +378,15 @@ function AccountSection() {
     e.preventDefault(); setErr(null); setBusy('email');
     const { error } = await supabase.auth.updateUser({ email: email.trim() }, { emailRedirectTo: authRedirect() });
     setBusy(null);
-    if (error) setErr(error); else toast('Check both inboxes to confirm the new email');
+    if (error) setErr(error); else { setPendingEmail(email.trim()); toast('Check your inbox for a confirmation code'); }
+  };
+  const [pendingEmail, setPendingEmail] = useState(null);
+  const [emailCode, setEmailCode] = useState('');
+  const confirmEmail = async (e) => {
+    e.preventDefault(); setErr(null); setBusy('code');
+    const { error } = await supabase.auth.verifyOtp({ email: pendingEmail, token: emailCode.replace(/\D/g, ''), type: 'email_change' });
+    setBusy(null);
+    if (error) setErr(error); else { setPendingEmail(null); setEmailCode(''); toast('Email updated'); }
   };
   const changePw = async (e) => {
     e.preventDefault(); setErr(null);
@@ -314,6 +422,14 @@ function AccountSection() {
           <Field label="Email address" htmlFor="a-email"><Input id="a-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
           <div><Button type="submit" loading={busy === 'email'} disabled={email.trim() === user.email}>Change email</Button></div>
         </form>
+        {pendingEmail && (
+          <form className="form-body" onSubmit={confirmEmail}>
+            <Field label={`Code sent to ${pendingEmail}`} htmlFor="a-email-code" hint="Or press the button in that email.">
+              <Input id="a-email-code" className="otp-input" inputMode="numeric" autoComplete="one-time-code" maxLength={10} value={emailCode} onChange={(e) => setEmailCode(e.target.value)} />
+            </Field>
+            <div><Button type="submit" variant="primary" loading={busy === 'code'} disabled={emailCode.replace(/\D/g, '').length < 6}>Confirm new email</Button></div>
+          </form>
+        )}
       </Panel>
       <Panel title={hasPassword ? 'Password' : 'Add a password'}>
         <form className="form-body" onSubmit={changePw}>
@@ -325,6 +441,7 @@ function AccountSection() {
         </form>
       </Panel>
       <InlineError error={err} />
+      <FunPanel />
       <Panel title="Session">
         <div className="form-body"><div><Button onClick={signOut}>Sign out</Button></div></div>
       </Panel>

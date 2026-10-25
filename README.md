@@ -75,6 +75,18 @@ scheme: Google sign-in opens in the user's browser and returns to the app throug
 invite links shared from the desktop app look like `partyup://invite/CODE`.
 Bump `version` in package.json on main to publish a new release.
 
+### Email templates
+Branded templates (welcome email with a big verification code + a one-click button, password
+reset, email change) are in `supabase/email-templates/` — paste them into **Authentication →
+Emails → Templates**. Supabase's built-in mailer only delivers to your own team's addresses, so add
+a custom SMTP sender (Authentication → Emails → SMTP Settings) before launching to the public.
+
+### Calls
+Voice/video calls are peer-to-peer WebRTC with signaling over private Supabase Realtime channels
+(authorized by policies on `realtime.messages`). Public STUN servers are used by default. Some
+strict networks need a TURN relay — set `VITE_TURN_URLS`, `VITE_TURN_USERNAME` and
+`VITE_TURN_CREDENTIAL` at build time to add one.
+
 ### Supabase Auth settings for release builds
 In **Authentication → URL Configuration**: set **Site URL** to `partyup://auth-callback` and add
 `partyup://**` (plus `http://localhost:5173/**` for development, and your web host if you deploy
@@ -104,7 +116,9 @@ deployed URL to Supabase's redirect URLs.
 
 | Area | What works |
 |---|---|
-| Auth | Sign up, sign in, Google sign-in (web and desktop), sign out, password reset by email, change email/password, delete account (typed confirmation) |
+| Calls | DM / group / party calls with ringing, community voice channels, camera, screen share, mute/deafen, speaking indicators |
+| Tournaments | Single-elimination brackets, teams up to 6, custom prize pools and splits, captain reporting + confirmation, disputes, payout tracking, host records, Tournament Agreement, reports |
+| Auth | Sign up, sign in, Google sign-in (web and desktop), email codes, sign out, password reset by email, change email/password, delete account (typed confirmation) |
 | Onboarding | Username (live availability check), avatar (12 presets or upload), region, languages, platforms, games with rank/role/platform, weekly schedule, mic, playstyle, teammate preferences. Every step after the username can be skipped and edited later |
 | Dashboard | Recommended teammates, your parties, suggested sessions, incoming party invites, friend requests, friends online, recent activity, profile-completion prompts, Find Teammates + Quick Match |
 | Find Players | Filters: game, rank range (per game), role, region, platform, language, mic, playstyle, availability (any / overlaps mine / usually plays now), online now, username search. Sort by best match, most active, recently online. Load more. Empty states name the filters to relax |

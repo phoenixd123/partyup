@@ -37,6 +37,26 @@ export function describe(n) {
       return { text: <><b>{who}</b> {n.data?.reply ? 'replied to you' : 'mentioned you'}{where}</>, preview: n.data?.preview, to };
     }
     case 'group_added': return { text: <><b>{who}</b> added you to {n.data?.group_name ? <b>{n.data.group_name}</b> : 'a group DM'}</>, to: `/messages/${n.conversation_id}` };
+    case 'call': {
+      const where = n.data?.kind === 'group' ? <> in {n.data.group_name ? <b>{n.data.group_name}</b> : 'a group'}</> : n.data?.kind === 'party' ? <> in {party}</> : null;
+      return { text: <><b>{who}</b> started a call{where}</>, to: `/messages/${n.conversation_id}` };
+    }
+    case 'tournament': {
+      const title = <b>{n.data?.title || 'a tournament'}</b>;
+      const to = `/tournaments/${n.data?.tournament_id}`;
+      const ev = n.data?.event;
+      const text = ev === 'added_to_team' ? <><b>{who}</b> added you to their team in {title}</>
+        : ev === 'started' ? <>{title} has started — check the bracket</>
+        : ev === 'match_ready' ? <>Your next match in {title} is ready</>
+        : ev === 'result_reported' ? <><b>{who}</b> reported a result in {title} — confirm it</>
+        : ev === 'disputed' ? <>A match in {title} is disputed and needs you</>
+        : ev === 'completed' ? <>{title} is over — see the results</>
+        : ev === 'cancelled' ? <>{title} was cancelled</>
+        : ev === 'prize_sent' ? <>The host of {title} says your prize was sent — confirm when it arrives</>
+        : ev === 'prize_not_received' ? <>A winner of {title} reported their prize as not received</>
+        : <>Update in {title}</>;
+      return { text, to };
+    }
     case 'report_update': return { text: n.data?.message || 'A moderator reviewed your report.', to: '/settings/safety', system: true };
     case 'moderation': return { text: n.data?.message || 'A moderator took action on your account.', to: null, system: true };
     default: return { text: n.type, to: null };

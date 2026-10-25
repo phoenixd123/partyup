@@ -1,3 +1,4 @@
+import { FunLoader } from './Seasonal.jsx';
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LuX, LuTriangleAlert, LuRefreshCw, LuCheck, LuChevronDown } from 'react-icons/lu';
@@ -27,8 +28,9 @@ export function Spinner({ size = 18, label }) {
   return <span className="spinner" style={{ width: size, height: size }} role={label ? 'status' : undefined} aria-label={label} />;
 }
 
-export function PageLoader({ label = 'Loading' }) {
-  return <div className="page-loader"><Spinner size={26} label={label} /></div>;
+// Loading screen with a rotating tip, fun fact or (in season) something spooky.
+export function PageLoader({ label, full }) {
+  return <div className={full ? 'page-loader full' : 'page-loader'}><FunLoader label={label} full={full} /></div>;
 }
 
 export function Skeleton({ h = 16, w = '100%', r, className }) {

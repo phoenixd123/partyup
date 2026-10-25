@@ -2,17 +2,19 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   LuHouse, LuSearch, LuUsers, LuUserPlus, LuMessageCircle, LuGamepad2, LuSettings, LuShieldCheck, LuBell, LuLogOut,
   LuChevronDown, LuCheck, LuMenu, LuX, LuZap, LuPlus, LuCompass, LuHash, LuMegaphone, LuLink, LuDoorOpen, LuBellOff,
-  LuSmile, LuUser,
+  LuSmile, LuUser, LuVolume2, LuMicOff, LuBadgeCheck, LuTrophy,
 } from 'react-icons/lu';
+import { useCall } from '../../context/CallContext.jsx';
 import * as api from '../../lib/api.js';
 import { Link, navigate } from '../../lib/router.jsx';
 import { useApp } from '../../context/AppContext.jsx';
 import { STATUSES } from '../../lib/constants.js';
 import { useAsync, useInterval } from '../../hooks/useAsync.js';
 import { Avatar, StatusDot } from '../gaming.jsx';
-import { cx, IconButton, Button, Input, Modal, InlineError, DemoBadge } from '../ui.jsx';
+import { cx, IconButton, Button, Input, Modal, InlineError, DemoBadge, Segmented } from '../ui.jsx';
 import { useConfirm, useToast } from '../feedback.jsx';
 import NotificationList from '../NotificationList.jsx';
+import { CallBar } from '../CallUI.jsx';
 import Logo, { LogoMark } from '../Logo.jsx';
 import { CommunityIcon, CreateCommunityDialog, InviteDialog, NewGroupDialog } from '../CommunityDialogs.jsx';
 
@@ -33,6 +35,7 @@ const HOME_NAV = (counts, roles) => [
   { to: '/', label: 'Home', icon: LuHouse, exact: true },
   { to: '/players', label: 'Find Players', icon: LuSearch },
   { to: '/parties', label: 'Parties', icon: LuUsers, badge: counts.party_invites },
+  { to: '/tournaments', label: 'Tournaments', icon: LuTrophy },
   { to: '/friends', label: 'Friends', icon: LuUserPlus, badge: counts.friend_requests },
   { to: '/messages', label: 'Messages', icon: LuMessageCircle, badge: counts.messages },
   { to: '/games', label: 'Game Profiles', icon: LuGamepad2 },
@@ -111,6 +114,7 @@ function HomeSidebar({ path, onNewGroup }) {
 
 function CommunitySidebar({ path }) {
   const { community: cres } = useCommunity();
+  const call = useCall();
   const { refreshCounts } = useApp();
   const toast = useToast();
   const confirm = useConfirm();
@@ -149,8 +153,9 @@ function CommunitySidebar({ path }) {
       </div>
       <div className="side-scroll">
         {c.is_demo && <p className="small muted pad-x" style={{ padding: '6px 8px' }}><DemoBadge /> Sample community</p>}
-        <div className="side-section"><span>Channels</span>{admin && <IconButton icon={LuPlus} label="Create channel" onClick={() => setCreating(true)} />}</div>
-        {c.channels.map((ch) => {
+        {c.is_official && <p className="small muted pad-x official-note"><LuBadgeCheck aria-hidden /> Official PartyUp community</p>}
+        <div className="side-section"><span>Text channels</span>{admin && <IconButton icon={LuPlus} label="Create channel" onClick={() => setCreating(true)} />}</div>
+        {c.channels.filter((ch) => ch.kind !== 'voice').map((ch) => {
           const to = `/c/${c.id}/${ch.id}`;
           const active = channelId === ch.id;
           return (
@@ -160,6 +165,29 @@ function CommunitySidebar({ path }) {
               {ch.muted && <LuBellOff aria-label="Muted" style={{ width: 14, height: 14 }} />}
               {ch.mentions > 0 && <span className="nav-badge">{ch.mentions}</span>}
             </Link>
+          );
+        })}
+        {c.channels.some((ch) => ch.kind === 'voice') && <div className="side-section"><span>Voice channels</span></div>}
+        {c.channels.filter((ch) => ch.kind === 'voice').map((ch) => {
+          const to = `/c/${c.id}/${ch.id}`;
+          const room = `channel:${ch.id}`;
+          const people = call?.inRoom(room) ? call.session.participants : (ch.voice || []);
+          return (
+            <div key={ch.id}>
+              <Link to={to} className={cx('side-link', channelId === ch.id && 'active')}>
+                <LuVolume2 aria-hidden className="hash" /><span className="lbl">{ch.name}</span>
+                {people.length > 0 && <span className="voice-count">{people.length}</span>}
+              </Link>
+              {people.length > 0 && (
+                <div className="voice-people">
+                  {people.map((p) => (
+                    <span key={p.id} className={cx('voice-person', call?.inRoom(room) && call.session.speaking.has(p.id) && 'speaking')}>
+                      <Avatar user={p} size={20} /><span>{p.username}</span>{p.muted && <LuMicOff aria-label="Muted" />}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
@@ -191,8 +219,10 @@ export function CreateChannelDialog({ community, onClose }) {
         </label>
         <label className="field"><span className="field-label">Topic <span className="optional">optional</span></span>
           <Input value={topic} onChange={(e) => setTopic(e.target.value)} maxLength={200} /></label>
-        <label className="toggle-row"><span className="toggle-text"><span>Announcement channel</span><small>Only admins can post</small></span>
-          <input type="checkbox" checked={kind === 'announcement'} onChange={(e) => setKind(e.target.checked ? 'announcement' : 'text')} /></label>
+        <div className="field"><span className="field-label">Type</span>
+          <Segmented value={kind} onChange={setKind} options={[{ value: 'text', label: 'Text' }, { value: 'voice', label: 'Voice' }, { value: 'announcement', label: 'Announcements' }]} />
+          <span className="field-msg">{kind === 'voice' ? 'Hang out with voice, video and screen share.' : kind === 'announcement' ? 'Only admins can post.' : 'Chat with messages, replies and reactions.'}</span>
+        </div>
         <InlineError error={err} />
       </form>
     </Modal>
@@ -309,7 +339,7 @@ export default function AppShell({ path, children }) {
   const community = useCommunityData(communityId);
   const suspended = profile.suspended_until && new Date(profile.suspended_until) > new Date();
   const nav = HOME_NAV(counts, roles);
-  const bottom = [nav[0], nav[1], nav[2], nav[4], nav[3]];
+  const bottom = [nav[0], nav[1], nav[2], nav[5], nav[3]];
 
   return (
     <CommunityCtx.Provider value={{ community }}>
@@ -319,7 +349,7 @@ export default function AppShell({ path, children }) {
           <aside className="sidebar" aria-label={communityId ? 'Channels' : 'Navigation'}>
             <button type="button" className="icon-btn drawer-x" style={{ position: 'absolute', right: 6, top: 10, zIndex: 2 }} aria-label="Close menu" onClick={() => setDrawer(false)}><LuX /></button>
             {communityId ? <CommunitySidebar path={path} /> : <HomeSidebar path={path} onNewGroup={() => setNewGroup(true)} />}
-            <div className="side-foot"><StatusPicker /></div>
+            <div className="side-foot"><CallBar /><StatusPicker /></div>
           </aside>
         </div>
         {drawer && <div className="drawer-scrim" onClick={() => setDrawer(false)} aria-hidden />}

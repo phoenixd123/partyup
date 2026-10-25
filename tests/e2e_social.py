@@ -52,7 +52,7 @@ def new_user(browser, email, username, viewport=(1440, 900)):
     for _ in range(3):
         page.get_by_role("button", name="Skip for now").click()
     page.get_by_role("button", name="Skip and finish").click()
-    expect(page.get_by_role("heading", name=f"Ready to queue, {username}?")).to_be_visible()
+    expect(page.locator(".dash-hero h1", has_text=username)).to_be_visible()
     return page
 
 
@@ -74,7 +74,9 @@ with sync_playwright() as p:
 
     print("Explore and join a public community")
     kai.get_by_role("link", name="Explore communities").click()
-    expect(kai.locator(".comm-card")).to_have_count(3)
+    expect(kai.locator(".comm-card").first.locator(".official-check")).to_be_visible()
+    kai.get_by_label("Search communities").fill("Valorant NA")
+    expect(kai.locator(".comm-card", has_text="Valorant NA Grind")).to_have_count(1)
     shot(kai, "s01-explore")
     kai.locator(".comm-card", has_text="Valorant NA Grind").get_by_role("button", name="Join").click()
     toast(kai, "Joined Valorant NA Grind")
@@ -240,7 +242,7 @@ with sync_playwright() as p:
     cid = db("select id from communities where name = 'Valorant NA Grind'")
     for route in ["#/explore", f"#/c/{cid}", "#/messages", "#/friends", "#/settings/notifications"]:
         cara.goto(BASE + route); cara.wait_for_timeout(700)
-        wide = cara.evaluate("[...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && !e.closest('.nav-drawer,.filters,.toasts,.settings-nav,.side-panel')).slice(0,3).map(e => e.className || e.tagName)")
+        wide = cara.evaluate("[...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && !e.closest('.nav-drawer,.filters,.toasts,.settings-nav,.side-panel,.season-decor')).slice(0,3).map(e => e.className || e.tagName)")
         assert not wide, f"overflow at {route}: {wide}"
     shot(cara, "s09-mobile-community")
     step("left group; no mobile overflow on community routes")

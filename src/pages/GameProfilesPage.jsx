@@ -1,12 +1,20 @@
+import GameIcon from '../components/GameIcon.jsx';
+import { LuMessagesSquare } from 'react-icons/lu';
 import { useState } from 'react';
 import { LuPlus, LuPencil, LuTrash2, LuGamepad2, LuEyeOff } from 'react-icons/lu';
 import * as api from '../lib/api.js';
+import { navigate } from '../lib/router.jsx';
 import { useAsync } from '../hooks/useAsync.js';
 import { useApp } from '../context/AppContext.jsx';
 import { EXPERIENCE, SESSION_LENGTHS, PLAYSTYLES, LOOKING_FOR, PLATFORMS, label, gameOptions } from '../lib/constants.js';
 import { Badge, Button, ChipSelect, EmptyState, ErrorState, Field, InlineError, Modal, PageHeader, Segmented, Select, SkeletonCards, Textarea, Toggle } from '../components/ui.jsx';
 import { GameTag, PlatformIcon } from '../components/gaming.jsx';
 import { useConfirm, useToast } from '../components/feedback.jsx';
+
+async function openCommunity(g) {
+  const c = await api.getOfficialCommunity(g.id).catch(() => null);
+  if (c) navigate(`/c/${c.id}`);
+}
 
 export default function GameProfilesPage() {
   const { userId } = useApp();
@@ -41,6 +49,7 @@ export default function GameProfilesPage() {
               return (
                 <article key={gp.id} className="gp-card editable" style={{ '--gc': g.accent_color }}>
                   <div className="gp-head">
+                    <GameIcon game={g} size={34} />
                     <GameTag game={g} />
                     {!gp.is_visible && <Badge title="Hidden from your public profile and search"><LuEyeOff aria-hidden /> Hidden</Badge>}
                   </div>
@@ -58,6 +67,7 @@ export default function GameProfilesPage() {
                   {gp.notes && <p className="gp-notes">{gp.notes}</p>}
                   <div className="row gap-s gp-actions">
                     <Button size="sm" icon={LuPencil} onClick={() => setEditing({ gp })}>Edit</Button>
+                    <Button size="sm" variant="ghost" icon={LuMessagesSquare} onClick={() => openCommunity(g)}>Community</Button>
                     <Button size="sm" variant="danger-ghost" icon={LuTrash2} onClick={() => remove(gp)}>Remove</Button>
                   </div>
                 </article>

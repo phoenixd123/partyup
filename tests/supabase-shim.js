@@ -36,6 +36,8 @@ export function createClient(url) {
     },
     signOut: async () => { setSession(null, 'SIGNED_OUT'); return { error: null }; },
     resetPasswordForEmail: async () => ({ data: {}, error: null }),
+    resend: async () => ({ data: {}, error: null }),
+    verifyOtp: async () => ({ data: {}, error: { message: 'Token has expired or is invalid' } }),
     updateUser: async (attrs) => {
       const r = await post('/auth/update', attrs);
       return r.error ? { data: {}, error: r.error } : { data: { user: r.user }, error: null };
@@ -74,11 +76,28 @@ export function createClient(url) {
       const r = await post('/rpc', { name, args });
       return r.error ? { data: null, error: r.error } : { data: r.data, error: null };
     },
-    channel: () => {
-      const ch = { on: () => ch, subscribe: (cb) => { setTimeout(() => cb?.('CHANNEL_ERROR'), 10); return ch; } };
+    // Broadcast-only channels (call signaling) are relayed by the test server over SSE.
+    // Channels that listen for postgres_changes report an error so the polling fallback runs.
+    channel: (topic) => {
+      const handlers = []; let pg = false; let es = null;
+      const cid = Math.random().toString(36).slice(2);
+      const ch = {
+        on: (type, filter, cb) => { if (type === 'broadcast') handlers.push([filter?.event, cb]); else pg = true; return ch; },
+        subscribe: (cb) => {
+          if (pg || !topic.startsWith('call:')) { setTimeout(() => cb?.('CHANNEL_ERROR'), 10); return ch; }
+          es = new EventSource(`${base}/broadcast/stream?topic=${encodeURIComponent(topic)}&token=${getSession()?.access_token || ''}&cid=${cid}`);
+          es.onopen = () => cb?.('SUBSCRIBED');
+          es.onerror = () => { if (es.readyState === 2) cb?.('CHANNEL_ERROR'); };
+          es.onmessage = (e) => { const m = JSON.parse(e.data); handlers.forEach(([ev, h]) => { if (!ev || ev === m.event) h({ event: m.event, payload: m.payload }); }); };
+          return ch;
+        },
+        send: async ({ event, payload }) => { await post('/broadcast', { topic, event, payload, cid }); return 'ok'; },
+        unsubscribe: () => { es?.close(); es = null; },
+        _close: () => { es?.close(); es = null; },
+      };
       return ch;
     },
-    removeChannel: () => {},
+    removeChannel: (ch) => { ch?._close?.(); },
     storage: {
       from: () => ({
         upload: async () => ({ data: null, error: { message: 'Storage is not available in the local test harness' } }),

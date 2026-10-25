@@ -177,3 +177,50 @@ export function subscribe(name, changes, onChange, onStatus) {
   }
   return () => { try { supabase.removeChannel(channel); } catch { /* ignore */ } };
 }
+
+// ---------- profile customization ----------
+export async function uploadBanner(userId, file) {
+  if (!file.type.startsWith('image/')) throw new ApiError('Choose an image file (PNG, JPG, WebP or GIF).');
+  if (file.size > 2 * 1024 * 1024) throw new ApiError('Banners must be 2 MB or smaller.');
+  const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const path = `${userId}/banner-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw friendly(error);
+  return supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+}
+
+// ---------- voice & video calls ----------
+export const voiceJoin = (room) => rpc('voice_join', { p_room: room });
+export const voiceHeartbeat = (room, s) => rpc('voice_heartbeat', {
+  p_room: room, p_muted: !!s.muted, p_deafened: !!s.deafened, p_video: !!s.video, p_sharing: !!s.sharing,
+});
+export const voiceLeave = (room) => rpc('voice_leave', { p_room: room });
+export const voiceState = (room) => rpc('voice_state', { p_room: room });
+export const myCalls = () => rpc('my_calls');
+
+// ---------- tournaments ----------
+export const tournamentAgreementVersion = () => rpc('tournament_agreement_version');
+export const createTournament = (f) => rpc('create_tournament', {
+  p_game: f.game_id, p_title: f.title, p_starts_at: f.starts_at, p_max_entrants: Number(f.max_entrants), p_team_size: Number(f.team_size),
+  p_description: f.description || '', p_rules: f.rules || '', p_region: f.region || null, p_platform: f.platform || null,
+  p_prize_type: f.prize_type, p_prize_total: f.prize_total === '' || f.prize_total == null ? null : Number(f.prize_total),
+  p_prize_currency: f.prize_currency || null, p_prize_description: f.prize_description || '', p_prize_split: f.prize_split || [],
+  p_payout_method: f.payout_method || '', p_payout_deadline_days: f.payout_deadline_days ? Number(f.payout_deadline_days) : null,
+  p_host_contact: f.host_contact || '', p_community: f.community_id || null, p_agreement_version: f.agreement_version,
+});
+export const listTournaments = (o = {}) => rpc('list_tournaments', {
+  p_game: o.game || null, p_scope: o.scope || 'upcoming', p_search: o.search || null, p_limit: o.limit || 24, p_offset: o.offset || 0,
+});
+export const getTournament = (id) => rpc('get_tournament', { p_tournament: id });
+export const registerTournament = (id, teamName, members, version) =>
+  rpc('register_tournament', { p_tournament: id, p_team_name: teamName, p_members: members, p_agreement_version: version });
+export const withdrawTournament = (id) => rpc('withdraw_tournament', { p_tournament: id });
+export const startTournament = (id) => rpc('start_tournament', { p_tournament: id });
+export const reportMatch = (match, winner, score) => rpc('report_match', { p_match: match, p_winner: winner, p_score: score || '' });
+export const disputeMatch = (match, reason) => rpc('dispute_match', { p_match: match, p_reason: reason });
+export const cancelTournament = (id, reason) => rpc('cancel_tournament', { p_tournament: id, p_reason: reason || '' });
+export const setPrizeStatus = (entrant, status) => rpc('set_prize_status', { p_entrant: entrant, p_status: status });
+export const reportTournament = (id, category, description) =>
+  rpc('report_tournament', { p_tournament: id, p_category: category, p_description: description });
+export const getOfficialCommunity = (gameId) =>
+  unwrap(supabase.from('communities').select('id, name, member_count').eq('is_official', true).eq('game_id', gameId).maybeSingle());

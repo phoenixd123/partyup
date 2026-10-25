@@ -10,6 +10,9 @@ import { Avatar, Presence } from '../components/gaming.jsx';
 import { useConfirm, useToast } from '../components/feedback.jsx';
 import ConversationView, { MemberList } from '../components/ConversationView.jsx';
 import { NewGroupDialog } from '../components/CommunityDialogs.jsx';
+import { CallStage } from '../components/CallUI.jsx';
+import { useCall } from '../context/CallContext.jsx';
+import { LuPhone, LuVideo } from 'react-icons/lu';
 
 const titleOf = (c) => (c.kind === 'party' ? c.party?.title : c.kind === 'group' ? (c.name || (c.members || []).map((m) => m.username).join(', ') || 'Group') : c.other?.username);
 
@@ -60,7 +63,8 @@ function ConversationList() {
 }
 
 function Thread({ id }) {
-  const { userId, refreshCounts } = useApp();
+  const { userId, refreshCounts, counts } = useApp();
+  const call = useCall();
   const toast = useToast();
   const confirm = useConfirm();
   const conv = useAsync(() => api.getConversation(id), [id]);
@@ -117,10 +121,26 @@ function Thread({ id }) {
     );
   }
 
+  // Voice / video call for this chat
+  const room = `conv:${c.id}`;
+  const callTitle = c.kind === 'direct' ? other?.username : titleOf({ ...c, members: (c.members || []).filter((m) => m.id !== userId) });
+  const ringing = (counts.calls || []).find((x) => x.room === room);
+  const canCall = !(c.kind === 'direct' && (c.blocked || other?.unavailable || other?.is_demo));
+  const callTools = canCall && !call.inRoom(room) && (
+    <>
+      <IconButton icon={LuPhone} label="Start voice call" onClick={() => call.join(room, { title: callTitle, to: `/messages/${c.id}` })} />
+      <IconButton icon={LuVideo} label="Start video call" onClick={() => call.join(room, { title: callTitle, to: `/messages/${c.id}`, video: true })} />
+    </>
+  );
+  tools = <>{callTools}{tools}</>;
+  const stage = (call.inRoom(room) || ringing) && (
+    <CallStage room={room} title={callTitle} to={`/messages/${c.id}`} people={ringing?.participants || []} kind="call" />
+  );
+
   return (
     <>
       {c.is_demo_partner && <p className="banner banner-info">This is a demo profile — sample data for development. Messages are saved, but nobody will reply.</p>}
-      <ConversationView key={c.id} conv={c} onChanged={refresh} title={title} members={c.members} memberPanel={memberPanel} tools={tools}
+      <ConversationView key={c.id} conv={c} onChanged={refresh} title={title} members={c.members} memberPanel={memberPanel} tools={tools} stage={stage}
         defaultPanel={c.kind === 'group' ? 'members' : null}
         emptyTitle={c.kind === 'direct' ? `This is the start of your messages with ${other.username}` : c.kind === 'group' ? 'Welcome to the group' : 'Party chat'}
         emptyText={c.kind === 'direct' ? 'Only the two of you can see this conversation.' : 'Everyone in here can see these messages.'} />

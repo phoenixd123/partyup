@@ -11,7 +11,8 @@ import {
 } from '../lib/constants.js';
 import { memberSince } from '../lib/format.js';
 import { Badge, Button, DemoBadge, EmptyState, ErrorState, Menu, PageLoader, Panel, IconButton } from '../components/ui.jsx';
-import { Avatar, CompatBreakdown, GameTag, MicLabel, PlatformIcon, Presence, SignalMeter, MatchingWeights } from '../components/gaming.jsx';
+import { bannerBackground, ProfileEffect, themeVars } from '../components/ProfileFx.jsx';
+import { Name, Avatar, CompatBreakdown, GameTag, MicLabel, PlatformIcon, Presence, SignalMeter, MatchingWeights } from '../components/gaming.jsx';
 import { usePlayerActions } from '../components/PlayerActions.jsx';
 import AvailabilityGrid from '../components/AvailabilityGrid.jsx';
 
@@ -36,11 +37,13 @@ export default function PlayerProfilePage({ params }) {
   const rel = p.relationship;
 
   return (
-    <div className="profile">
+    <div className={`profile${p.theme_color ? ' themed' : ''}`} style={themeVars(p)}>
+      <div className="profile-banner" style={{ background: bannerBackground(p) }}><ProfileEffect effect={p.profile_effect} /></div>
       <section className="profile-hero">
         <Avatar user={p} size={96} status={p.status} />
         <div className="profile-id">
-          <h1>{p.username} {p.is_demo && <DemoBadge />}</h1>
+          <h1><Name user={p} /> {p.is_demo && <DemoBadge />}</h1>
+          {(p.custom_status || p.status_emoji) && <div className="custom-status">{p.status_emoji} {p.custom_status}</div>}
           <div className="row gap-m wrap muted">
             <Presence user={p} />
             {p.region && <span><LuMapPin aria-hidden /> {regionLabel(p.region)}</span>}
@@ -132,6 +135,16 @@ export default function PlayerProfilePage({ params }) {
               <div className="chips static pad">
                 {p.teammate_traits.map((t) => <span key={t} className="chip">{label(TEAMMATE_TRAITS, t)}</span>)}
                 {p.pref_teammate_mic !== 'any' && <span className="chip">{label(TEAMMATE_MIC, p.pref_teammate_mic)}</span>}
+              </div>
+            </Panel>
+          )}
+          {p.tournament_stats?.hosted > 0 && (
+            <Panel title="Tournament host record">
+              <div className="host-record">
+                <span><b>{p.tournament_stats.hosted}</b> hosted</span>
+                <span><b>{p.tournament_stats.completed}</b> completed</span>
+                <span className="good"><b>{p.tournament_stats.prizes_received}</b> prizes confirmed paid</span>
+                {p.tournament_stats.prizes_not_received > 0 && <span className="bad"><b>{p.tournament_stats.prizes_not_received}</b> reported unpaid</span>}
               </div>
             </Panel>
           )}

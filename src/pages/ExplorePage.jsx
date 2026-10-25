@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LuCompass, LuPlus } from 'react-icons/lu';
+import { LuCompass, LuPlus, LuBadgeCheck } from 'react-icons/lu';
 import * as api from '../lib/api.js';
 import { useAsync, useDebounced } from '../hooks/useAsync.js';
 import { useApp } from '../context/AppContext.jsx';
@@ -34,7 +34,7 @@ export default function ExplorePage() {
   };
   return (
     <div>
-      <PageHeader title="Explore communities" sub="Public groups for your games: LFG channels, scrims, and regulars."
+      <PageHeader title="Explore communities" sub="Official communities for every game, plus groups made by players: LFG channels, voice, scrims and regulars."
         actions={<Button variant="primary" icon={LuPlus} onClick={() => setCreating(true)}>Create community</Button>} />
       <div className="toolbar">
         <div className="toolbar-filters">
@@ -53,7 +53,7 @@ export default function ExplorePage() {
               <article key={c.id} className="comm-card">
                 <div className="top">
                   <span className="comm-badge"><CommunityIcon community={c} /></span>
-                  <div className="grow" style={{ minWidth: 0 }}><h3>{c.name}</h3>{c.game && <GameTag game={c.game} compact />} {c.is_demo && <DemoBadge />}</div>
+                  <div className="grow" style={{ minWidth: 0 }}><h3>{c.name}{c.is_official && <LuBadgeCheck className="official-check" aria-label="Official" />}</h3>{c.game && <GameTag game={c.game} compact />} {c.is_demo && <DemoBadge />}</div>
                 </div>
                 <p>{c.description || 'No description.'}</p>
                 <div className="foot">

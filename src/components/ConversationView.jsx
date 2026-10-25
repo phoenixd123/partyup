@@ -59,7 +59,7 @@ export function MemberList({ members, title = 'Members' }) {
  * Header + chat + optional side panel (pins, search, members) for one conversation.
  * `title` is the header content; `memberPanel` renders the member list when available.
  */
-export default function ConversationView({ conv, onChanged, title, topic, members = [], memberPanel, tools, emptyTitle, emptyText, defaultPanel = null }) {
+export default function ConversationView({ conv, onChanged, title, topic, members = [], memberPanel, tools, emptyTitle, emptyText, defaultPanel = null, stage }) {
   const toast = useToast();
   const [panel, setPanel] = useState(defaultPanel && window.innerWidth > 1100 ? defaultPanel : null);
   const [q, setQ] = useState('');
@@ -93,6 +93,7 @@ export default function ConversationView({ conv, onChanged, title, topic, member
             {memberPanel && <IconButton icon={LuUsers} label="Member list" onClick={() => toggle('members')} className={cx(panel === 'members' && 'on')} />}
           </div>
         </header>
+        {stage}
         <ChatThread ref={thread} conv={conv} members={members} onRead={onChanged} emptyTitle={emptyTitle} emptyText={emptyText} />
       </div>
       {panel && (

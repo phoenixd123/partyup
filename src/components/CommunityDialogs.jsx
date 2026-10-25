@@ -1,3 +1,4 @@
+import GameIcon from './GameIcon.jsx';
 import { useState } from 'react';
 import { LuCopy, LuCheck, LuUsers } from 'react-icons/lu';
 import * as api from '../lib/api.js';
@@ -11,6 +12,10 @@ import { useToast } from './feedback.jsx';
 import { Avatar } from './gaming.jsx';
 
 export function CommunityIcon({ community, size = 44, radius }) {
+  if (community?.is_official) {
+    const game = community.game || { id: community.game_id, accent_color: community.icon_color, name: community.name };
+    return <GameIcon game={{ ...game, accent_color: game.accent_color || community.icon_color }} size={size} radius={radius} label={false} />;
+  }
   const initials = (community?.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
   return (
     <span className="comm-icon" style={{ background: community?.icon_color || '#3e63dd', width: size, height: size, borderRadius: radius, fontSize: size * 0.34 }} aria-hidden>

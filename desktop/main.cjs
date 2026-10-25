@@ -4,7 +4,7 @@
 // Sign-in links (Google sign-in, email confirmation, password reset) come back as
 // partyup://auth-callback?code=… — the app registers that scheme with the OS and
 // hands the link to the page, which finishes sign-in with Supabase (PKCE).
-const { app, BrowserWindow, shell, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, Menu, ipcMain, session, desktopCapturer } = require('electron');
 const path = require('node:path');
 
 const SCHEME = 'partyup';
@@ -99,6 +99,17 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
+    // Calls: allow the microphone, camera and screen sharing for the app's own pages only.
+    const ALLOWED = new Set(['media', 'display-capture', 'notifications', 'clipboard-sanitized-write', 'fullscreen']);
+    session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
+      cb(ALLOWED.has(permission) && String(details?.requestingUrl || wc.getURL()).startsWith('file://'));
+    });
+    session.defaultSession.setPermissionCheckHandler((wc, permission, origin) => ALLOWED.has(permission) && (!origin || origin === 'file://' || origin.startsWith('file:')));
+    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+      desktopCapturer.getSources({ types: ['screen', 'window'] })
+        .then((sources) => callback(sources.length ? { video: sources[0] } : {}))
+        .catch(() => callback({}));
+    }, { useSystemPicker: true });
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });

@@ -8,7 +8,7 @@ import { useInterval } from '../hooks/useAsync.js';
 import { clockTime, dayLabel } from '../lib/format.js';
 import { renderMessage } from '../lib/markdown.jsx';
 import { REACTIONS } from '../lib/constants.js';
-import { Avatar } from './gaming.jsx';
+import { Name, Avatar } from './gaming.jsx';
 import { Button, ErrorState, Skeleton, cx, IconButton } from './ui.jsx';
 import { useConfirm, useToast } from './feedback.jsx';
 import { ReportDialog } from './PlayerActions.jsx';
@@ -243,7 +243,7 @@ const ChatThread = forwardRef(function ChatThread({ conv, members = [], onRead, 
                       )}
                       {!grouped && (
                         <div className="msg-meta">
-                          <button type="button" className={cx('msg-author', mine && 'mine')} onClick={(e) => openProfile(e, sender)}>{mine ? profile.username : sender.username}</button>
+                          <button type="button" className={cx('msg-author', mine && 'mine')} onClick={(e) => openProfile(e, sender)}><Name user={mine ? profile : sender} /></button>
                           {sender.is_demo && <span className="badge badge-demo">Demo</span>}
                           <time dateTime={m.created_at} title={new Date(m.created_at).toLocaleString()}>{clockTime(m.created_at)}</time>
                           {m.pinned && <span className="badge"><LuPin aria-hidden /> Pinned</span>}

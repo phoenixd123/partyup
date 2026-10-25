@@ -1,5 +1,7 @@
-import { useEffect } from 'react';
-import { LuZap, LuSearch, LuPlus, LuUsers, LuUserPlus, LuMailOpen, LuGamepad2, LuCrown } from 'react-icons/lu';
+import { useEffect, useState } from 'react';
+import { LuZap, LuSearch, LuPlus, LuUsers, LuUserPlus, LuMailOpen, LuGamepad2, LuCrown, LuLightbulb, LuShuffle, LuX } from 'react-icons/lu';
+import { greeting, heroLine, randomLine } from '../lib/flavor.js';
+import { Pumpkin, useSeason } from '../components/Seasonal.jsx';
 import * as api from '../lib/api.js';
 import { useAsync } from '../hooks/useAsync.js';
 import { useApp } from '../context/AppContext.jsx';
@@ -23,6 +25,13 @@ export default function DashboardPage() {
   const { data, error, loading, reload } = useAsync(() => api.getDashboard(), []);
   useEffect(() => onNotify(() => reload({ quiet: true })), [onNotify, reload]);
 
+  const season = useSeason();
+  const [hello] = useState(() => greeting(profile.username));
+  const [sub] = useState(() => heroLine());
+  const [note, setNote] = useState(() => randomLine());
+  const [bannerHidden, setBannerHidden] = useState(() => { try { return localStorage.getItem('partyup.banner.halloween-2026') === '1'; } catch { return false; } });
+  const hideBanner = () => { setBannerHidden(true); try { localStorage.setItem('partyup.banner.halloween-2026', '1'); } catch { /* ignore */ } };
+
   const act = async (fn, msg) => {
     try { await fn(); toast(msg); reload({ quiet: true }); refreshCounts(); } catch (e) { toast(e, 'error'); }
   };
@@ -31,14 +40,23 @@ export default function DashboardPage() {
     <div className="dash">
       <section className="dash-hero">
         <div>
-          <h1>Ready to queue, {profile.username}?</h1>
-          <p className="sub">Find people who fit your game, rank and schedule — or start a party and let them find you.</p>
+          <h1>{hello}</h1>
+          <p className="sub">{sub}</p>
         </div>
         <div className="dash-cta">
           <Button variant="primary" size="lg" icon={LuZap} onClick={() => navigate('/match')}>Find Teammates</Button>
           <Button size="lg" icon={LuPlus} onClick={() => navigate('/parties/new')}>Create party</Button>
         </div>
       </section>
+
+      {season === 'halloween' && !bannerHidden && (
+        <div className="season-banner">
+          <Pumpkin size={34} />
+          <p><b>Spooky season is live.</b> Horror nights are better with a squad — try a Phasmophobia, Lethal Company or Dead by Daylight party.</p>
+          <Button size="sm" onClick={() => navigate('/parties')}>Browse parties</Button>
+          <Button size="sm" variant="ghost" icon={LuX} aria-label="Dismiss" onClick={hideBanner} />
+        </div>
+      )}
 
       {error ? <ErrorState error={error} onRetry={reload} /> : (
         <>
@@ -77,6 +95,9 @@ export default function DashboardPage() {
             </div>
 
             <aside className="dash-side">
+              <Panel title="Did you know?" action={<Button size="sm" variant="ghost" icon={LuShuffle} aria-label="Another one" onClick={() => setNote(randomLine())} />}>
+                <div className="note-card"><span className="note-ico"><LuLightbulb aria-hidden /></span><p>{note}</p></div>
+              </Panel>
               {data?.party_invites?.length > 0 && (
                 <Panel title="Party invites" className="accent">
                   <ul className="mini-list">

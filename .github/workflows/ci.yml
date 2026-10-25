@@ -45,6 +45,8 @@ jobs:
         run: node tests/build_test.mjs && bash tests/restart.sh && python tests/e2e.py
       - name: UI test — communities, group DMs, message features
         run: bash tests/restart.sh && python tests/e2e_social.py
+      - name: UI test — calls (WebRTC), tournaments, profile styles, official communities
+        run: bash tests/restart.sh && python tests/e2e_v3.py
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4

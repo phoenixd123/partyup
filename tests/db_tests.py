@@ -762,8 +762,265 @@ def _():
 
 @test("demo communities are flagged and listed")
 def _():
-    ex = j("select explore_communities()", A)
+    ex = j("select explore_communities(p_limit => 60)", A)
     assert sum(1 for c in ex["communities"] if c["is_demo"]) == 3
+
+
+
+print("\nProfile customization")
+
+
+@test("users can set profile style fields; values are validated and shown on cards")
+def _():
+    ok("update profiles set name_style = 'sunset', avatar_decoration = 'orbit', profile_effect = 'sparkles', "
+       "banner_url = 'preset:3', theme_color = '#112233', theme_color_2 = '#aabbcc', status_emoji = '🎮' where id = auth.uid()", A)
+    fails("update profiles set name_style = 'rainbow-hack' where id = auth.uid()", A, "check constraint")
+    fails("update profiles set banner_url = 'javascript:alert(1)' where id = auth.uid()", A, "check constraint")
+    card = j(f"select _card('{A}')")
+    assert card["name_style"] == "sunset" and card["avatar_decoration"] == "orbit" and card["status_emoji"] == "🎮"
+    prof = j(f"select get_player_profile('{A}')", B)
+    assert prof["profile_effect"] == "sparkles" and prof["banner_url"] == "preset:3"
+    fails("update profiles set is_banned = true where id = auth.uid()", A, "permission denied")
+
+
+print("\nOfficial game communities")
+
+
+@test("every game has an official community with voice channels, run by moderators")
+def _():
+    games = int(ok("select count(*) from games where is_active"))
+    assert int(ok("select count(*) from communities where is_official")) == games
+    vid = ok("select id from communities where is_official and game_id = 'valorant'")
+    info = j(f"select get_community('{vid}')", A)
+    kinds = sorted(c["kind"] for c in info["channels"])
+    assert kinds.count("voice") == 2 and "announcement" in kinds
+    assert info["is_official"] is True and info["my_role"] is None
+    assert j(f"select get_community('{vid}')", MOD)["my_role"] == "admin"
+    ok(f"select join_community('{vid}')", A)
+    ann = next(c for c in j(f"select get_community('{vid}')", A)["channels"] if c["kind"] == "announcement")
+    fails(f"select send_message('{ann['conversation_id']}', 'hi all')", A)
+    fails(f"select delete_community('{vid}', 'Valorant')", MOD, "only the owner")
+    ex = j("select explore_communities()", A)
+    assert ex["communities"][0]["is_official"] is True
+
+
+print("\nVoice & video calls")
+
+
+@test("only members can join a call room; joining rings the other side; leaving clears it")
+def _():
+    conv = ok(f"select get_or_create_direct_conversation('{B}')", A)
+    room = f"conv:{conv}"
+    assert ok(f"select can_use_room('{room}')", A) == "t"
+    assert ok(f"select can_use_room('{room}')", D) == "f"
+    fails(f"select voice_join('{room}')", D, "can't join")
+    fails("select voice_join('conv:not-a-uuid')", A, "can't join")
+    res = j(f"select voice_join('{room}')", A)
+    assert [p["id"] for p in res["participants"]] == [A]
+    assert ok(f"select count(*) from notifications where user_id = '{B}' and type = 'call'") == "1"
+    calls = j("select my_calls()", B)
+    assert len(calls) == 1 and calls[0]["room"] == room
+    people = j(f"select voice_heartbeat('{room}', true, false, true, false)", A)
+    assert people[0]["muted"] is True and people[0]["video"] is True
+    j(f"select voice_join('{room}')", B)
+    assert len(j(f"select voice_state('{room}')", A)) == 2
+    assert j("select my_calls()", B) == []
+    ok(f"select voice_leave('{room}')", A)
+    assert [p["id"] for p in j(f"select voice_state('{room}')", B)] == [B]
+    ok(f"select voice_leave('{room}')", B)
+    fails("select count(*) from voice_participants", A, "permission denied")
+
+
+@test("community voice channels are limited to members; one call at a time")
+def _():
+    vid = ok("select id from communities where is_official and game_id = 'valorant'")
+    vc = next(c for c in j(f"select get_community('{vid}')", A)["channels"] if c["kind"] == "voice")
+    room = f"channel:{vc['id']}"
+    fails(f"select voice_join('{room}')", D, "can't join")
+    j(f"select voice_join('{room}')", A)
+    lobby = next(c for c in j(f"select get_community('{vid}')", A)["channels"] if c["kind"] == "voice")
+    assert [p["id"] for p in lobby["voice"]] == [A]
+    conv = ok(f"select get_or_create_direct_conversation('{B}')", A)
+    j(f"select voice_join('conv:{conv}')", A)
+    assert j(f"select voice_state('{room}')", A) == []
+    ok(f"select voice_leave('conv:{conv}')", A)
+
+
+@test("blocked users can't call each other")
+def _():
+    x = make_user("caller_x"); y = make_user("callee_y")
+    conv = ok(f"select get_or_create_direct_conversation('{y}')", x)
+    ok(f"select block_user('{x}')", y)
+    fails(f"select voice_join('conv:{conv}')", x, "can't join")
+
+
+print("\nTournaments")
+
+AG = None
+
+
+def friends(a, b):
+    ok(f"select send_friend_request('{b}')", a)
+    ok(f"select respond_friend_request('{a}', true)", b)
+
+
+H = make_user("host_t"); P1 = make_user("cap_one"); P2 = make_user("cap_two"); P3 = make_user("cap_three")
+P4 = make_user("cap_four"); P5 = make_user("cap_five"); M1 = make_user("mate_one")
+friends(P1, M1)
+
+
+def start_at():
+    return "now() + interval '1 day'"
+
+
+@test("hosting requires the agreement; entry fees and bad prize splits are rejected")
+def _():
+    global AG
+    AG = ok("select tournament_agreement_version()", H)
+    fails(f"select create_tournament('valorant', 'Cup', {start_at()}, 8)", H, "agreement")
+    fails(f"select create_tournament('valorant', 'Cup', now() + interval '1 minute', 8, p_agreement_version => {AG})", H, "10 minutes")
+    fails(f"select create_tournament('valorant', 'Cup', {start_at()}, 6, p_agreement_version => {AG})", H, "bracket size")
+    fails(f"select create_tournament('valorant', 'Cup', {start_at()}, 8, p_description => 'Entry fee is $5 via venmo', p_agreement_version => {AG})", H, "entry fees")
+    # new account can't offer cash
+    fails(f"select create_tournament('valorant', 'Cash Cup', {start_at()}, 8, p_prize_type => 'cash', p_prize_total => 100, p_prize_currency => 'USD', "
+          f"p_prize_split => '[{{\"place\":1,\"amount\":100}}]', p_payout_method => 'PayPal', p_payout_deadline_days => 7, p_agreement_version => {AG})", H, "3 days old")
+    ok(f"update profiles set created_at = now() - interval '30 days' where id = '{H}'")
+    fails(f"select create_tournament('valorant', 'Cash Cup', {start_at()}, 8, p_prize_type => 'cash', p_prize_total => 100, p_prize_currency => 'USD', "
+          f"p_prize_split => '[{{\"place\":1,\"amount\":60}},{{\"place\":2,\"amount\":30}}]', p_payout_method => 'PayPal', p_payout_deadline_days => 7, p_agreement_version => {AG})", H, "add up")
+    fails(f"select create_tournament('valorant', 'Cash Cup', {start_at()}, 8, p_prize_type => 'cash', p_prize_total => 100, p_prize_currency => 'USD', "
+          f"p_prize_split => '[{{\"place\":1,\"amount\":100}}]', p_payout_deadline_days => 7, p_agreement_version => {AG})", H, "how winners will be paid")
+
+
+TID = None
+
+
+@test("cash tournament: register solo and duo teams, validate rosters, capacity")
+def _():
+    global TID
+    TID = ok(f"select create_tournament('valorant', 'Friday Cash Cup', {start_at()}, 4, p_team_size => 2, p_prize_type => 'cash', "
+             f"p_prize_total => 100, p_prize_currency => 'USD', p_prize_split => '[{{\"place\":1,\"amount\":70}},{{\"place\":2,\"amount\":30}}]', "
+             f"p_payout_method => 'PayPal within a week', p_payout_deadline_days => 7, p_agreement_version => {AG})", H)
+    t = j(f"select get_tournament('{TID}')", P1)
+    assert t["status"] == "registration" and t["prize_total"] == 100 and t["host"]["username"] == "host_t"
+    fails(f"select register_tournament('{TID}', 'Solo', '{{}}', {AG})", P1, "teammate")
+    fails(f"select register_tournament('{TID}', 'Team One', array['{P2}']::uuid[], {AG})", P1, "friends list")
+    fails(f"select register_tournament('{TID}', 'Team One', array['{M1}']::uuid[], null)", P1, "agreement")
+    fails(f"select register_tournament('{TID}', 'Hosts', '{{}}', {AG})", H, "own tournament")
+    e1 = ok(f"select register_tournament('{TID}', 'Team One', array['{M1}']::uuid[], {AG})", P1)
+    assert ok(f"select count(*) from notifications where user_id = '{M1}' and type = 'tournament'") == "1"
+    fails(f"select register_tournament('{TID}', 'Again', '{{}}', {AG})", M1, "already entered")
+    for cap, mate in [(P2, make_user("mate_two")), (P3, make_user("mate_three")), (P4, make_user("mate_four"))]:
+        friends(cap, mate)
+        ok(f"select register_tournament('{TID}', 'Team {cap[:4]}', array['{mate}']::uuid[], {AG})", cap)
+    mate5 = make_user("mate_five"); friends(P5, mate5)
+    fails(f"select register_tournament('{TID}', 'Late', array['{mate5}']::uuid[], {AG})", P5, "full")
+    assert j(f"select get_tournament('{TID}')", P1)["entrant_count"] == 4
+    assert e1
+
+
+@test("only the host starts; bracket is generated with ready matches")
+def _():
+    fails(f"select start_tournament('{TID}')", P1, "only the host")
+    ok(f"select start_tournament('{TID}')", H)
+    t = j(f"select get_tournament('{TID}')", P1)
+    assert t["status"] == "in_progress"
+    r1 = [m for m in t["matches"] if m["round"] == 1]
+    assert len(r1) == 2 and all(m["status"] == "ready" for m in r1)
+    assert len([m for m in t["matches"] if m["round"] == 2]) == 1
+    fails(f"select register_tournament('{TID}', 'Too late', '{{}}', {AG})", P5, "closed")
+
+
+def match_of(t, cap):
+    eid = next(e["id"] for e in t["entrants"] if e["captain_id"] == cap)
+    m = next(m for m in t["matches"] if eid in (m["entrant_a"], m["entrant_b"]) and m["status"] != "done")
+    return m, eid
+
+
+@test("captains report and confirm; mismatched reports become disputes the host resolves")
+def _():
+    t = j(f"select get_tournament('{TID}')", P1)
+    m, mine = match_of(t, P1)
+    other = m["entrant_b"] if m["entrant_a"] == mine else m["entrant_a"]
+    other_cap = next(e["captain_id"] for e in t["entrants"] if e["id"] == other)
+    fails(f"select report_match({m['id']}, '{mine}')", M1, "captains")
+    assert ok(f"select report_match({m['id']}, '{mine}', '13-7')", P1) == "reported"
+    assert ok(f"select report_match({m['id']}, '{mine}')", other_cap) == "done"
+    # second semifinal: captains disagree
+    t = j(f"select get_tournament('{TID}')", P1)
+    m2 = next(x for x in t["matches"] if x["round"] == 1 and x["status"] == "ready")
+    caps = {e["id"]: e["captain_id"] for e in t["entrants"]}
+    ok(f"select report_match({m2['id']}, '{m2['entrant_a']}')", caps[m2["entrant_a"]])
+    assert ok(f"select report_match({m2['id']}, '{m2['entrant_b']}')", caps[m2["entrant_b"]]) == "disputed"
+    fails(f"select report_match({m2['id']}, '{m2['entrant_a']}')", caps[m2["entrant_a"]], "disputed")
+    assert ok(f"select report_match({m2['id']}, '{m2['entrant_b']}', '2-1')", H) == "done"
+    final = next(x for x in j(f"select get_tournament('{TID}')", P1)["matches"] if x["round"] == 2)
+    assert final["status"] == "ready" and mine in (final["entrant_a"], final["entrant_b"])
+
+
+@test("final completes the tournament, assigns places and prize amounts")
+def _():
+    t = j(f"select get_tournament('{TID}')", P1)
+    final = next(x for x in t["matches"] if x["round"] == 2)
+    mine = next(e["id"] for e in t["entrants"] if e["captain_id"] == P1)
+    ok(f"select report_match({final['id']}, '{mine}', '2-0')", H)
+    t = j(f"select get_tournament('{TID}')", P1)
+    assert t["status"] == "completed"
+    places = {e["team_name"]: (e["final_place"], e["prize_amount"], e["prize_status"]) for e in t["entrants"]}
+    assert places["Team One"] == (1, 70, "pending"), places
+    assert sorted(p[0] for p in places.values()) == [1, 2, 3, 3]
+    assert sum(1 for p in places.values() if p[1] == 30) == 1
+
+
+@test("payout tracking: host marks sent, winner confirms; unpaid prizes auto-report the host")
+def _():
+    t = j(f"select get_tournament('{TID}')", P1)
+    champ = next(e for e in t["entrants"] if e["final_place"] == 1)
+    second = next(e for e in t["entrants"] if e["final_place"] == 2)
+    fails(f"select set_prize_status('{champ['id']}', 'sent')", P1, "only the host")
+    fails(f"select set_prize_status('{champ['id']}', 'received')", H, "winning team")
+    fails(f"select set_prize_status('{second['id']}', 'not_received')", second["captain_id"], "has until")
+    ok(f"select set_prize_status('{champ['id']}', 'sent')", H)
+    ok(f"select set_prize_status('{champ['id']}', 'received')", M1)
+    ok(f"update tournaments set completed_at = now() - interval '10 days' where id = '{TID}'")
+    ok(f"select set_prize_status('{second['id']}', 'not_received')", second["captain_id"])
+    assert ok(f"select count(*) from reports where tournament_id = '{TID}' and category = 'scam' and reported_user_id = '{H}'") == "1"
+    stats = j(f"select get_player_profile('{H}')", P1)["tournament_stats"]
+    assert stats["prizes_received"] == 1 and stats["prizes_not_received"] == 1 and stats["completed"] == 1
+
+
+@test("byes: 3 entrants in a 4-slot bracket; cancel; list scopes; report tournament")
+def _():
+    tid = ok(f"select create_tournament('cs2', 'Bye Test', {start_at()}, 4, p_prize_type => 'item', p_prize_description => 'Signed mousepad', p_agreement_version => {AG})", H)
+    for cap in (P2, P3, P4):
+        ok(f"update tournaments set team_size = 1 where id = '{tid}'")
+        ok(f"select register_tournament('{tid}', 'Solo {cap[:5]}', '{{}}', {AG})", cap)
+    ok(f"select start_tournament('{tid}')", H)
+    t = j(f"select get_tournament('{tid}')", P2)
+    r1 = sorted([m for m in t["matches"] if m["round"] == 1], key=lambda m: m["slot"])
+    assert sum(1 for m in r1 if m["status"] == "done") == 1 and sum(1 for m in r1 if m["status"] == "ready") == 1
+    final = next(m for m in t["matches"] if m["round"] == 2)
+    assert (final["entrant_a"] is None) != (final["entrant_b"] is None)
+    live = j("select list_tournaments(p_scope => 'live')", P5)
+    assert any(x["id"] == tid for x in live["tournaments"])
+    mine = j("select list_tournaments(p_scope => 'mine')", H)
+    assert mine["total"] >= 2
+    fails(f"select cancel_tournament('{tid}')", P2, "only the host")
+    ok(f"select cancel_tournament('{tid}', 'Server issues')", H)
+    assert j(f"select get_tournament('{tid}')", P2)["status"] == "cancelled"
+    rid = ok(f"select report_tournament('{tid}', 'scam', 'Host promised a prize and vanished')", P2)
+    assert ok(f"select category from reports where id = '{rid}'") == "scam"
+    fails("select count(*) from tournaments", P2, "permission denied")
+
+
+@test("withdrawing before start; blocked hosts' tournaments are hidden")
+def _():
+    tid = ok(f"select create_tournament('cs2', 'Withdraw Test', {start_at()}, 4, p_agreement_version => {AG})", H)
+    ok(f"select register_tournament('{tid}', 'Leaver', '{{}}', {AG})", P5)
+    ok(f"select withdraw_tournament('{tid}')", P5)
+    assert j(f"select get_tournament('{tid}')", P5)["entrant_count"] == 0
+    ok(f"select block_user('{H}')", P5)
+    assert j(f"select get_tournament('{tid}')", P5) is None
+    ok(f"select unblock_user('{H}')", P5)
 
 
 print("\nAccount deletion")

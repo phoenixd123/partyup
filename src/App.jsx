@@ -7,6 +7,9 @@ import { PageLoader, ErrorState, Button } from './components/ui.jsx';
 import AppShell from './components/layout/AppShell.jsx';
 import { lazy, Suspense } from 'react';
 import Logo from './components/Logo.jsx';
+import { SeasonalDecor } from './components/Seasonal.jsx';
+import { CallProvider } from './context/CallContext.jsx';
+import { CallAudio, IncomingCalls } from './components/CallUI.jsx';
 
 // Developer-only screen for pointing a local build at a Supabase project.
 // Release builds have the project baked in and never include or show it.
@@ -31,6 +34,10 @@ import CommunityPage from './pages/CommunityPage.jsx';
 import CommunitySettingsPage from './pages/CommunitySettingsPage.jsx';
 import ExplorePage from './pages/ExplorePage.jsx';
 import InvitePage from './pages/InvitePage.jsx';
+import TournamentsPage from './pages/TournamentsPage.jsx';
+import CreateTournamentPage from './pages/CreateTournamentPage.jsx';
+import TournamentPage from './pages/TournamentPage.jsx';
+import TournamentAgreementPage from './pages/TournamentAgreementPage.jsx';
 
 const ROUTES = [
   ['/', DashboardPage],
@@ -40,6 +47,10 @@ const ROUTES = [
   ['/parties', PartiesPage],
   ['/parties/new', CreatePartyPage],
   ['/parties/:id', PartyDetailPage],
+  ['/tournaments', TournamentsPage],
+  ['/tournaments/new', CreateTournamentPage],
+  ['/tournaments/agreement', TournamentAgreementPage],
+  ['/tournaments/:id', TournamentPage],
   ['/friends', FriendsPage],
   ['/messages', MessagesPage],
   ['/messages/:id', MessagesPage],
@@ -64,7 +75,7 @@ function Routed() {
 
   useEffect(() => { window.scrollTo(0, 0); }, [path]);
 
-  if (session === undefined) return <PageLoader label="Starting PartyUp" />;
+  if (session === undefined) return <PageLoader full />;
 
   if (recovery || (path === '/reset' && session)) return <ResetPage />;
 
@@ -88,7 +99,7 @@ function Routed() {
         </div>
       );
     }
-    return <PageLoader label="Loading your profile" />;
+    return <PageLoader full label="Loading your profile…" />;
   }
 
   if (profile.is_banned) {
@@ -113,6 +124,11 @@ function Routed() {
   return <AppShell path={path}><NotFoundPage /></AppShell>;
 }
 
+function SignedIn({ children }) {
+  const { session, profile } = useApp();
+  return session && profile?.onboarded_at ? children : null;
+}
+
 export default function App() {
   if (!isConfigured) {
     if (SetupPage) return <FeedbackProvider><Suspense fallback={<PageLoader />}><SetupPage /></Suspense></FeedbackProvider>;
@@ -129,8 +145,13 @@ export default function App() {
   }
   return (
     <FeedbackProvider>
+      <SeasonalDecor />
       <AppProvider>
-        <Routed />
+        <CallProvider>
+          <Routed />
+          <CallAudio />
+          <SignedIn><IncomingCalls /></SignedIn>
+        </CallProvider>
       </AppProvider>
     </FeedbackProvider>
   );

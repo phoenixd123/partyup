@@ -9,6 +9,17 @@
 
 The installers aren't code-signed yet. Windows SmartScreen may say "Windows protected your PC" — choose **More info → Run anyway**. On macOS, right-click the app and choose **Open** the first time.
 
+## 1.3.0
+
+- **Voice & video calls:** call anyone from a DM, group chat or party chat (they get an incoming-call ring), and hang out in community **voice channels**. Mute, deafen, camera, screen share, speaking indicators, and the call keeps going while you move around the app.
+- **Tournaments:** host free single-elimination brackets (solo or teams up to 6v6) with optional **custom prize pools** — cash, gift cards or items, split between 1st/2nd/3rd. Captains report and confirm results, disputes go to the host, and winners confirm when prizes arrive.
+- **Anti-scam protections:** everyone accepts the **PartyUp Tournament Agreement**; entry fees and buy-ins are blocked; cash prizes need an account at least 3 days old; every host has a public payout record; unpaid prizes are reported to moderators automatically; any tournament can be reported.
+- **Official communities for every game** (53), each with text channels, announcements and voice channels.
+- **Game icons** for all 53 games.
+- **Profile styles (free):** animated avatar decorations, name styles, profile banners (GIFs animate), theme colours, profile effects and a status emoji.
+- **Email verification codes:** sign-up and password-reset emails now include a code you can type into the app (works on any device), plus a one-click button. New branded email templates.
+- Loading screens with tips and gaming facts, friendlier copy everywhere, and Halloween decorations through November 1 (turn them off in Settings → Account).
+
 ## 1.2.0
 
 - **Ready to use out of the box:** the app now connects to the PartyUp server automatically. No setup screen.

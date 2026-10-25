@@ -380,7 +380,7 @@ create table if not exists public.channels (
   community_id  uuid not null references public.communities(id) on delete cascade,
   name          text not null check (name ~ '^[a-z0-9][a-z0-9-]{0,29}$'),
   topic         text not null default '' check (char_length(topic) <= 200),
-  kind          text not null default 'text' check (kind in ('text','announcement')),
+  kind          text not null default 'text' check (kind in ('text','announcement','voice')),
   position      int not null default 0,
   created_at    timestamptz not null default now(),
   unique (community_id, name)
@@ -393,6 +393,17 @@ alter table public.games add column if not exists genre text;
 alter table public.profiles add column if not exists custom_status text not null default '' check (char_length(custom_status) <= 60);
 alter table public.profiles add column if not exists notify_mentions boolean not null default true;
 alter table public.profiles add column if not exists stat_messages_sent int not null default 0;
+-- v3: profile customization (free for everyone)
+alter table public.profiles add column if not exists banner_url text check (banner_url is null or (char_length(banner_url) <= 500 and banner_url ~ '^(https://|preset:)'));
+alter table public.profiles add column if not exists theme_color text check (theme_color is null or theme_color ~ '^#[0-9a-fA-F]{6}$');
+alter table public.profiles add column if not exists theme_color_2 text check (theme_color_2 is null or theme_color_2 ~ '^#[0-9a-fA-F]{6}$');
+alter table public.profiles add column if not exists name_style text not null default 'plain'
+  check (name_style in ('plain','sunset','ocean','toxic','royal','candy','gold','glow','spooky'));
+alter table public.profiles add column if not exists avatar_decoration text not null default 'none'
+  check (avatar_decoration in ('none','pulse','orbit','flames','sparkle','neon','crown','pumpkin','halo','bats'));
+alter table public.profiles add column if not exists profile_effect text not null default 'none'
+  check (profile_effect in ('none','snow','sparkles','embers','bats','confetti','stars'));
+alter table public.profiles add column if not exists status_emoji text not null default '' check (char_length(status_emoji) <= 8);
 
 alter table public.conversations add column if not exists name text check (char_length(name) <= 40);
 alter table public.conversations add column if not exists owner_id uuid references public.profiles(id) on delete set null;
@@ -408,6 +419,11 @@ alter table public.conversations add constraint conversations_shape check (
   or (kind = 'channel' and channel_id is not null and party_id is null and direct_key is null));
 
 alter table public.conversation_members add column if not exists muted boolean not null default false;
+alter table public.channels drop constraint if exists channels_kind_check;
+alter table public.channels add constraint channels_kind_check check (kind in ('text','announcement','voice'));
+-- v3: official per-game communities (no owner; run by PartyUp moderators)
+alter table public.communities add column if not exists is_official boolean not null default false;
+create unique index if not exists communities_official_game_idx on public.communities (game_id) where is_official;
 
 alter table public.messages add column if not exists reply_to bigint references public.messages(id) on delete set null;
 alter table public.messages add column if not exists edited_at timestamptz;
@@ -420,7 +436,7 @@ create index if not exists messages_pinned_idx on public.messages (conversation_
 alter table public.notifications drop constraint if exists notifications_type_check;
 alter table public.notifications add constraint notifications_type_check check (type in ('friend_request','friend_accepted','party_invite',
   'party_invite_accepted','join_request','join_accepted','join_rejected','party_removed','party_leadership','party_closed',
-  'message','mention','group_added','report_update','moderation'));
+  'message','mention','group_added','report_update','moderation','call','tournament'));
 
 create table if not exists public.message_reactions (
   message_id  bigint not null references public.messages(id) on delete cascade,
@@ -581,6 +597,13 @@ select p.id,
        public._display_status(p)                                              as status,
        case when p.show_online_status and p.status <> 'invisible' then p.last_seen_at end as last_active_at,
        p.custom_status,
+       p.status_emoji,
+       p.banner_url,
+       p.theme_color,
+       p.theme_color_2,
+       p.name_style,
+       p.avatar_decoration,
+       p.profile_effect,
        p.discoverable,
        p.allow_friend_requests,
        p.allow_party_invites,
@@ -610,7 +633,10 @@ create or replace function public._card(p_user uuid) returns jsonb
 language sql stable security definer set search_path = public as $$
   select jsonb_build_object('id', pp.id, 'username', pp.username, 'avatar_url', pp.avatar_url,
                             'status', pp.status, 'last_active_at', pp.last_active_at, 'is_demo', pp.is_demo,
-                            'region', pp.region, 'custom_status', pp.custom_status)
+                            'region', pp.region, 'custom_status', pp.custom_status, 'status_emoji', pp.status_emoji,
+                            'name_style', pp.name_style, 'avatar_decoration', pp.avatar_decoration,
+                            'banner_url', pp.banner_url, 'theme_color', pp.theme_color, 'theme_color_2', pp.theme_color_2,
+                            'profile_effect', pp.profile_effect)
   from public_profiles pp where pp.id = p_user
 $$;
 
@@ -739,6 +765,8 @@ begin
      or (p_type = 'message' and not pr.notify_messages)
      or (p_type = 'mention' and not pr.notify_mentions)
      or (p_type = 'group_added' and not pr.notify_messages)
+     or (p_type = 'call' and not pr.notify_messages)
+     or (p_type = 'tournament' and not pr.notify_request_updates)
      or (p_type = 'message' and p_conv is not null
          and exists (select 1 from conversation_members cm where cm.conversation_id = p_conv and cm.user_id = p_user and cm.muted)) then
     return;
@@ -1047,6 +1075,10 @@ begin
     'teammate_traits', pp.teammate_traits, 'pref_teammate_mic', pp.pref_teammate_mic,
     'highlights', pp.highlights, 'availability', pp.availability, 'created_at', pp.created_at,
     'achievements', _achievements(p_user),
+    'custom_status', pp.custom_status, 'status_emoji', pp.status_emoji, 'banner_url', pp.banner_url,
+    'theme_color', pp.theme_color, 'theme_color_2', pp.theme_color_2, 'name_style', pp.name_style,
+    'avatar_decoration', pp.avatar_decoration, 'profile_effect', pp.profile_effect,
+    'tournament_stats', _tournament_host_stats(p_user),
     'is_self', p_user = me,
     'muted_by_me', _mutes(me, p_user),
     'can_message', p_user <> me and (pp.allow_messages = 'everyone' or (pp.allow_messages = 'friends' and _are_friends(me, p_user))),
@@ -1990,9 +2022,14 @@ end $$;
 -- =============================================================================
 -- COMMUNITIES
 -- =============================================================================
+-- PartyUp moderators act as admins of the official game communities.
 create or replace function public._community_role(p_community uuid, p_user uuid) returns text
 language sql stable security definer set search_path = public as $$
-  select role from community_members where community_id = p_community and user_id = p_user
+  select coalesce(
+    (select case when m.role = 'member' and c.is_official and public.is_moderator(p_user) then 'admin' else m.role end
+       from community_members m join communities c on c.id = m.community_id
+      where m.community_id = p_community and m.user_id = p_user),
+    (select 'admin' from communities c where c.id = p_community and c.is_official and public.is_moderator(p_user)))
 $$;
 
 create or replace function public.is_community_member(p_community uuid) returns boolean
@@ -2091,7 +2128,7 @@ language plpgsql security definer set search_path = public as $$
 declare me uuid := _require_user(); co communities;
 begin
   select * into co from communities where id = p_community;
-  if not found or co.owner_id is distinct from me then raise exception 'Only the owner can delete this community.' using errcode = '42501'; end if;
+  if not found or co.is_official or co.owner_id is distinct from me then raise exception 'Only the owner can delete this community.' using errcode = '42501'; end if;
   if lower(btrim(coalesce(p_confirm_name, ''))) <> lower(co.name) then raise exception 'Type the community name exactly to confirm.'; end if;
   delete from communities where id = p_community;
 end $$;
@@ -2100,7 +2137,7 @@ create or replace function public._community_json(p_me uuid, co communities) ret
 language sql stable security definer set search_path = public as $$
   select jsonb_build_object('id', co.id, 'name', co.name, 'description', co.description, 'icon_color', co.icon_color,
     'is_public', co.is_public, 'member_count', co.member_count, 'is_demo', co.is_demo, 'created_at', co.created_at,
-    'owner_id', co.owner_id, 'my_role', _community_role(co.id, p_me),
+    'owner_id', co.owner_id, 'my_role', _community_role(co.id, p_me), 'is_official', co.is_official,
     'game', (select jsonb_build_object('id', g.id, 'name', g.name, 'short_name', g.short_name, 'accent_color', g.accent_color) from games g where g.id = co.game_id),
     'online_count', (select count(*) from community_members m join public_profiles pp on pp.id = m.user_id where m.community_id = co.id and pp.status <> 'offline'))
 $$;
@@ -2121,7 +2158,8 @@ begin
          'unread', is_member and exists (select 1 from messages m join conversation_members cm on cm.conversation_id = m.conversation_id and cm.user_id = me
                                           where m.conversation_id = cv.id and m.created_at > cm.last_read_at and m.sender_id is distinct from me),
          'muted', coalesce((select muted from conversation_members where conversation_id = cv.id and user_id = me), false),
-         'mentions', (select count(*) from notifications n where n.user_id = me and n.type = 'mention' and n.conversation_id = cv.id and n.read_at is null))
+         'mentions', (select count(*) from notifications n where n.user_id = me and n.type = 'mention' and n.conversation_id = cv.id and n.read_at is null),
+         'voice', case when ch.kind = 'voice' then _voice_people('channel:' || ch.id) end)
        order by ch.position, ch.created_at)
        from channels ch join conversations cv on cv.channel_id = ch.id where ch.community_id = co.id), '[]'::jsonb));
 end $$;
@@ -2131,6 +2169,7 @@ language plpgsql stable security definer set search_path = public as $$
 declare me uuid := _require_user();
 begin
   return coalesce((select jsonb_agg(jsonb_build_object('id', co.id, 'name', co.name, 'icon_color', co.icon_color, 'is_demo', co.is_demo, 'role', m.role,
+      'is_official', co.is_official, 'game_id', co.game_id,
       'unread', exists (select 1 from channels ch join conversations cv on cv.channel_id = ch.id
                         join conversation_members cm on cm.conversation_id = cv.id and cm.user_id = me and not cm.muted
                         join messages msg on msg.conversation_id = cv.id
@@ -2152,12 +2191,12 @@ begin
   where co.is_public and (v.show_demo_players or not co.is_demo) and (p_game is null or co.game_id = p_game)
     and (pat is null or co.name ilike pat or co.description ilike pat)
     and not exists (select 1 from community_bans b where b.community_id = co.id and b.user_id = me);
-  select coalesce(jsonb_agg(_community_json(me, x) order by x.member_count desc, x.created_at), '[]'::jsonb) into result from (
+  select coalesce(jsonb_agg(_community_json(me, x) order by x.is_official desc, x.member_count desc, x.created_at), '[]'::jsonb) into result from (
     select co.* from communities co
     where co.is_public and (v.show_demo_players or not co.is_demo) and (p_game is null or co.game_id = p_game)
       and (pat is null or co.name ilike pat or co.description ilike pat)
       and not exists (select 1 from community_bans b where b.community_id = co.id and b.user_id = me)
-    order by co.member_count desc, co.created_at limit least(greatest(coalesce(p_limit, 24), 1), 48) offset greatest(coalesce(p_offset, 0), 0)) x;
+    order by co.is_official desc, co.member_count desc, co.created_at limit least(greatest(coalesce(p_limit, 24), 1), 60) offset greatest(coalesce(p_offset, 0), 0)) x;
   return jsonb_build_object('total', total, 'communities', result);
 end $$;
 
@@ -2333,7 +2372,7 @@ language plpgsql security definer set search_path = public as $$
 declare me uuid := _require_community_admin(p_community); v_name text := _clean_channel_name(p_name); chid uuid;
 begin
   if v_name = '' then raise exception 'Channel names use letters, numbers and dashes.'; end if;
-  if p_kind not in ('text','announcement') then raise exception 'Invalid channel type.'; end if;
+  if p_kind not in ('text','announcement','voice') then raise exception 'Invalid channel type.'; end if;
   if (select count(*) from channels where community_id = p_community) >= 50 then raise exception 'Communities can have up to 50 channels.'; end if;
   if exists (select 1 from channels where community_id = p_community and name = v_name) then raise exception 'A channel called #% already exists.', v_name; end if;
   insert into channels (community_id, name, topic, kind, position)
@@ -2352,7 +2391,7 @@ begin
   me := _require_community_admin(ch.community_id);
   v_name := case when p_name is null then ch.name else _clean_channel_name(p_name) end;
   if v_name = '' then raise exception 'Channel names use letters, numbers and dashes.'; end if;
-  if p_kind is not null and p_kind not in ('text','announcement') then raise exception 'Invalid channel type.'; end if;
+  if p_kind is not null and p_kind not in ('text','announcement','voice') then raise exception 'Invalid channel type.'; end if;
   if v_name <> ch.name and exists (select 1 from channels where community_id = ch.community_id and name = v_name) then
     raise exception 'A channel called #% already exists.', v_name;
   end if;
@@ -2756,7 +2795,8 @@ grant update (username, avatar_url, bio, region, languages, platforms, mic_prefe
               show_bio, show_region, show_languages, show_platforms, show_availability, show_ranks, show_highlights,
               show_online_status, allow_friend_requests, allow_party_invites, allow_messages,
               notify_friend_requests, notify_party_invites, notify_join_requests, notify_request_updates, notify_messages,
-              show_demo_players, onboarded_at, custom_status, notify_mentions)
+              show_demo_players, onboarded_at, custom_status, notify_mentions,
+              banner_url, theme_color, theme_color_2, name_style, avatar_decoration, profile_effect, status_emoji)
   on public.profiles to authenticated;
 grant select on public.user_roles to authenticated;
 grant select, delete on public.user_game_profiles to authenticated;
@@ -2992,6 +3032,734 @@ update public.games set genre = v.genre from (values
   ('apex-legends','battle_royale'),('fortnite','battle_royale'),('rocket-league','sports'),('rainbow-six-siege','shooter'),
   ('deadlock','moba'),('minecraft','sandbox'),('call-of-duty','shooter')) v(id, genre)
 where games.id = v.id and games.genre is null;
+
+
+-- #############################################################################
+-- v3: VOICE & VIDEO CALLS, TOURNAMENTS, OFFICIAL GAME COMMUNITIES
+-- #############################################################################
+
+-- =============================================================================
+-- VOICE & VIDEO CALLS
+-- Media flows peer-to-peer (WebRTC). Signaling uses private Supabase Realtime
+-- broadcast topics "call:<room>", authorized by the policies further down.
+-- Rooms: "conv:<conversation id>" (DMs, group DMs, party chats) and
+--        "channel:<voice channel id>" (community voice channels).
+-- =============================================================================
+create table if not exists public.voice_participants (
+  room       text not null check (room ~ '^(channel|conv):[0-9a-f-]{36}$'),
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  joined_at  timestamptz not null default now(),
+  last_seen  timestamptz not null default now(),
+  muted      boolean not null default false,
+  deafened   boolean not null default false,
+  video      boolean not null default false,
+  sharing    boolean not null default false,
+  primary key (room, user_id)
+);
+create index if not exists voice_participants_user_idx on public.voice_participants (user_id);
+alter table public.voice_participants enable row level security;
+
+create or replace function public._room_ok(p_room text, p_user uuid) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare k text := split_part(coalesce(p_room, ''), ':', 1); rid uuid; ch channels; c conversations;
+begin
+  if p_user is null or coalesce(p_room, '') !~ '^(channel|conv):[0-9a-f-]{36}$' then return false; end if;
+  rid := split_part(p_room, ':', 2)::uuid;
+  if k = 'conv' then
+    select * into c from conversations where id = rid and kind in ('direct','group','party');
+    if not found or not exists (select 1 from conversation_members where conversation_id = rid and user_id = p_user) then return false; end if;
+    if c.kind = 'direct' and exists (select 1 from conversation_members o where o.conversation_id = rid and o.user_id <> p_user and _blocked(o.user_id, p_user)) then
+      return false;
+    end if;
+    return true;
+  else
+    select * into ch from channels where id = rid and kind = 'voice';
+    if not found then return false; end if;
+    return exists (select 1 from community_members where community_id = ch.community_id and user_id = p_user);
+  end if;
+end $$;
+
+-- Exposed to policies: only answers for the caller.
+create or replace function public.can_use_room(p_room text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public._room_ok(p_room, auth.uid())
+$$;
+
+create or replace function public._voice_people(p_room text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(_card(v.user_id) || jsonb_build_object('muted', v.muted, 'deafened', v.deafened, 'video', v.video,
+           'sharing', v.sharing, 'joined_at', v.joined_at) order by v.joined_at), '[]'::jsonb)
+  from voice_participants v where v.room = p_room and v.last_seen > now() - interval '40 seconds' and _card(v.user_id) is not null
+$$;
+
+create or replace function public.voice_join(p_room text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_active(); others int; rid uuid; c conversations; m record;
+begin
+  if not _room_ok(p_room, me) then raise exception 'You can''t join this call.' using errcode = '42501'; end if;
+  perform _rate_limit('voice_join', 40, interval '10 minutes', 'call joins');
+  delete from voice_participants where user_id = me and room <> p_room; -- one call at a time
+  select count(*) into others from voice_participants where room = p_room and user_id <> me and last_seen > now() - interval '40 seconds';
+  insert into voice_participants (room, user_id) values (p_room, me)
+  on conflict (room, user_id) do update set last_seen = now();
+  -- Starting a call in a chat rings everyone else in it
+  if others = 0 and p_room like 'conv:%' then
+    rid := split_part(p_room, ':', 2)::uuid;
+    select * into c from conversations where id = rid;
+    for m in select user_id from conversation_members where conversation_id = rid and user_id <> me loop
+      perform _notify(m.user_id, 'call', me, c.party_id, rid, jsonb_build_object('room', p_room, 'kind', c.kind, 'group_name', c.name));
+    end loop;
+  end if;
+  return jsonb_build_object('room', p_room, 'participants', _voice_people(p_room));
+end $$;
+
+create or replace function public.voice_heartbeat(p_room text, p_muted boolean default false, p_deafened boolean default false,
+  p_video boolean default false, p_sharing boolean default false) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_user();
+begin
+  if not _room_ok(p_room, me) then
+    delete from voice_participants where room = p_room and user_id = me;
+    raise exception 'You are no longer allowed in this call.' using errcode = '42501';
+  end if;
+  insert into voice_participants (room, user_id, muted, deafened, video, sharing)
+  values (p_room, me, coalesce(p_muted, false), coalesce(p_deafened, false), coalesce(p_video, false), coalesce(p_sharing, false))
+  on conflict (room, user_id) do update set last_seen = now(), muted = excluded.muted, deafened = excluded.deafened,
+    video = excluded.video, sharing = excluded.sharing;
+  if random() < 0.05 then delete from voice_participants where last_seen < now() - interval '10 minutes'; end if;
+  return _voice_people(p_room);
+end $$;
+
+create or replace function public.voice_leave(p_room text) returns void
+language sql security definer set search_path = public as $$
+  delete from voice_participants where room = p_room and user_id = auth.uid()
+$$;
+
+create or replace function public.voice_state(p_room text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare me uuid := _require_user();
+begin
+  if not _room_ok(p_room, me) then return '[]'::jsonb; end if;
+  return _voice_people(p_room);
+end $$;
+
+-- Calls going on in my chats that I'm not part of (drives the "incoming call" bar)
+create or replace function public.my_calls() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(x order by x ->> 'started_at' desc), '[]'::jsonb) from (
+    select jsonb_build_object('room', v.room, 'conversation_id', c.id, 'kind', c.kind, 'name', c.name,
+             'party_title', (select title from parties where id = c.party_id),
+             'started_at', min(v.joined_at), 'participants', _voice_people(v.room)) as x
+    from voice_participants v
+    join conversations c on v.room = 'conv:' || c.id::text
+    join conversation_members cm on cm.conversation_id = c.id and cm.user_id = auth.uid() and not cm.muted
+    where v.last_seen > now() - interval '40 seconds'
+      and not exists (select 1 from voice_participants mine where mine.room = v.room and mine.user_id = auth.uid())
+      and not exists (select 1 from voice_participants v2 where v2.room = v.room and v2.user_id <> auth.uid() and _blocked(v2.user_id, auth.uid()))
+    group by v.room, c.id
+    limit 5) q
+$$;
+
+-- =============================================================================
+-- TOURNAMENTS
+-- Hosts run single-elimination brackets and may offer prizes. PartyUp never
+-- holds or moves money: prizes are paid by the host, every participant accepts
+-- the Tournament Agreement, entry fees are not allowed, and payout status is
+-- tracked publicly so hosts build (or lose) a reputation.
+-- =============================================================================
+create table if not exists public.tournaments (
+  id                   uuid primary key default gen_random_uuid(),
+  host_id              uuid references public.profiles(id) on delete set null,
+  game_id              text not null references public.games(id) on update cascade,
+  community_id         uuid references public.communities(id) on delete set null,
+  title                text not null check (char_length(btrim(title)) between 3 and 80),
+  description          text not null default '' check (char_length(description) <= 2000),
+  rules                text not null default '' check (char_length(rules) <= 4000),
+  format               text not null default 'single_elimination' check (format in ('single_elimination')),
+  team_size            int not null default 1 check (team_size between 1 and 6),
+  max_entrants         int not null check (max_entrants in (4, 8, 16, 32, 64)),
+  region               text check (region is null or char_length(region) <= 20),
+  platform             text check (platform is null or platform in ('pc','playstation','xbox','switch','mobile','crossplay')),
+  starts_at            timestamptz not null,
+  status               text not null default 'registration' check (status in ('registration','in_progress','completed','cancelled')),
+  prize_type           text not null default 'none' check (prize_type in ('none','cash','gift_card','item','other')),
+  prize_total          numeric(12,2) check (prize_total is null or (prize_total >= 0 and prize_total <= 100000)),
+  prize_currency       text check (prize_currency is null or prize_currency ~ '^[A-Z]{3}$'),
+  prize_description    text not null default '' check (char_length(prize_description) <= 500),
+  prize_split          jsonb not null default '[]',
+  payout_method        text not null default '' check (char_length(payout_method) <= 200),
+  payout_deadline_days int check (payout_deadline_days is null or payout_deadline_days between 1 and 60),
+  host_contact         text not null default '' check (char_length(host_contact) <= 120),
+  agreement_version    int not null,
+  cancel_reason        text check (char_length(cancel_reason) <= 300),
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
+  started_at           timestamptz,
+  completed_at         timestamptz
+);
+create index if not exists tournaments_status_idx on public.tournaments (status, starts_at);
+create index if not exists tournaments_game_idx on public.tournaments (game_id, starts_at);
+
+create table if not exists public.tournament_entrants (
+  id             uuid primary key default gen_random_uuid(),
+  tournament_id  uuid not null references public.tournaments(id) on delete cascade,
+  captain_id     uuid references public.profiles(id) on delete set null,
+  team_name      text not null check (char_length(btrim(team_name)) between 2 and 32),
+  members        uuid[] not null default '{}',
+  seed           int,
+  final_place    int,
+  eliminated     boolean not null default false,
+  prize_amount   numeric(12,2),
+  prize_status   text not null default 'none' check (prize_status in ('none','pending','sent','received','not_received')),
+  created_at     timestamptz not null default now()
+);
+create unique index if not exists tournament_entrants_name_idx on public.tournament_entrants (tournament_id, lower(team_name));
+create index if not exists tournament_entrants_members_idx on public.tournament_entrants using gin (members);
+
+create table if not exists public.tournament_matches (
+  id               bigint generated always as identity primary key,
+  tournament_id    uuid not null references public.tournaments(id) on delete cascade,
+  round            int not null,
+  slot             int not null,
+  entrant_a        uuid references public.tournament_entrants(id) on delete set null,
+  entrant_b        uuid references public.tournament_entrants(id) on delete set null,
+  winner           uuid references public.tournament_entrants(id) on delete set null,
+  score            text not null default '' check (char_length(score) <= 40),
+  status           text not null default 'pending' check (status in ('pending','ready','reported','disputed','done')),
+  reported_by      uuid references public.profiles(id) on delete set null,
+  reported_winner  uuid references public.tournament_entrants(id) on delete set null,
+  dispute_reason   text check (char_length(dispute_reason) <= 300),
+  updated_at       timestamptz not null default now(),
+  unique (tournament_id, round, slot)
+);
+
+create table if not exists public.tournament_agreements (
+  tournament_id  uuid not null references public.tournaments(id) on delete cascade,
+  user_id        uuid not null references public.profiles(id) on delete cascade,
+  role           text not null check (role in ('host','entrant')),
+  version        int not null,
+  accepted_at    timestamptz not null default now(),
+  primary key (tournament_id, user_id, role)
+);
+
+alter table public.tournaments enable row level security;
+alter table public.tournament_entrants enable row level security;
+alter table public.tournament_matches enable row level security;
+alter table public.tournament_agreements enable row level security;
+drop trigger if exists trg_tournaments_touch on public.tournaments;
+create trigger trg_tournaments_touch before update on public.tournaments for each row execute function public.touch_updated_at();
+
+alter table public.reports add column if not exists tournament_id uuid references public.tournaments(id) on delete set null;
+alter table public.reports drop constraint if exists reports_category_check;
+alter table public.reports add constraint reports_category_check
+  check (category in ('harassment','cheating','spam','inappropriate_profile','suspicious','scam','other'));
+
+-- Bump when the agreement text in src/lib/tournamentAgreement.js changes.
+create or replace function public.tournament_agreement_version() returns int language sql immutable as $$ select 1 $$;
+
+create or replace function public._tournament_host_stats(p_user uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'hosted', (select count(*) from tournaments t where t.host_id = p_user and t.status <> 'cancelled'),
+    'completed', (select count(*) from tournaments t where t.host_id = p_user and t.status = 'completed'),
+    'cancelled', (select count(*) from tournaments t where t.host_id = p_user and t.status = 'cancelled' and t.started_at is not null),
+    'prizes_received', (select count(*) from tournament_entrants e join tournaments t on t.id = e.tournament_id where t.host_id = p_user and e.prize_status = 'received'),
+    'prizes_not_received', (select count(*) from tournament_entrants e join tournaments t on t.id = e.tournament_id where t.host_id = p_user and e.prize_status = 'not_received'),
+    'prizes_pending', (select count(*) from tournament_entrants e join tournaments t on t.id = e.tournament_id where t.host_id = p_user and e.prize_status in ('pending','sent')))
+$$;
+
+create or replace function public._tournament_visible(t tournaments, p_me uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select t.host_id is null or not _blocked(t.host_id, p_me)
+$$;
+
+create or replace function public._entrant_json(e tournament_entrants) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('id', e.id, 'team_name', e.team_name, 'captain_id', e.captain_id, 'seed', e.seed,
+    'final_place', e.final_place, 'eliminated', e.eliminated, 'prize_amount', e.prize_amount, 'prize_status', e.prize_status,
+    'members', coalesce((select jsonb_agg(_card(u) order by array_position(e.members, u)) from unnest(e.members) u where _card(u) is not null), '[]'::jsonb))
+$$;
+
+create or replace function public._tournament_summary(t tournaments, p_me uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('id', t.id, 'title', t.title, 'status', t.status, 'starts_at', t.starts_at, 'team_size', t.team_size,
+    'max_entrants', t.max_entrants, 'region', t.region, 'platform', t.platform, 'prize_type', t.prize_type, 'prize_total', t.prize_total,
+    'prize_currency', t.prize_currency, 'prize_description', t.prize_description, 'created_at', t.created_at,
+    'entrant_count', (select count(*) from tournament_entrants e where e.tournament_id = t.id),
+    'host', _card(t.host_id), 'am_host', t.host_id = p_me,
+    'my_entrant', (select e.id from tournament_entrants e where e.tournament_id = t.id and p_me = any(e.members)),
+    'game', (select jsonb_build_object('id', g.id, 'name', g.name, 'short_name', g.short_name, 'accent_color', g.accent_color, 'genre', g.genre) from games g where g.id = t.game_id))
+$$;
+
+create or replace function public.create_tournament(p_game text, p_title text, p_starts_at timestamptz, p_max_entrants int,
+  p_team_size int default 1, p_description text default '', p_rules text default '', p_region text default null, p_platform text default null,
+  p_prize_type text default 'none', p_prize_total numeric default null, p_prize_currency text default null, p_prize_description text default '',
+  p_prize_split jsonb default '[]', p_payout_method text default '', p_payout_deadline_days int default null, p_host_contact text default '',
+  p_community uuid default null, p_agreement_version int default null) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_active(); pr profiles; tid uuid; split_sum numeric := 0; item jsonb; places int[] := '{}'; txt text;
+begin
+  if coalesce(p_agreement_version, 0) <> tournament_agreement_version() then
+    raise exception 'Read and accept the Tournament Agreement to host.';
+  end if;
+  perform _rate_limit('create_tournament', 3, interval '1 day', 'tournaments created');
+  if not exists (select 1 from games where id = p_game and is_active) then raise exception 'Unknown game.'; end if;
+  if char_length(btrim(coalesce(p_title, ''))) < 3 then raise exception 'Give the tournament a title (3–80 characters).'; end if;
+  if p_max_entrants not in (4, 8, 16, 32, 64) then raise exception 'Bracket size must be 4, 8, 16, 32 or 64.'; end if;
+  if coalesce(p_team_size, 1) not between 1 and 6 then raise exception 'Team size must be 1 to 6.'; end if;
+  if p_starts_at is null or p_starts_at < now() + interval '10 minutes' then raise exception 'Start time must be at least 10 minutes from now.'; end if;
+  if p_starts_at > now() + interval '90 days' then raise exception 'Start time must be within 90 days.'; end if;
+  txt := lower(coalesce(p_title, '') || ' ' || coalesce(p_description, '') || ' ' || coalesce(p_rules, '') || ' ' || coalesce(p_prize_description, ''));
+  if txt ~ '(entry fee|entry-fee|buy[- ]?in|pay to (enter|join|play)|registration fee)' then
+    raise exception 'Entry fees and buy-ins aren''t allowed on PartyUp tournaments.';
+  end if;
+  if p_community is not null and not exists (select 1 from community_members where community_id = p_community and user_id = me) then
+    raise exception 'You can only link a community you are in.';
+  end if;
+  if coalesce(p_prize_type, 'none') not in ('none','cash','gift_card','item','other') then raise exception 'Invalid prize type.'; end if;
+
+  if p_prize_type = 'none' then
+    p_prize_total := null; p_prize_currency := null; p_prize_split := '[]'; p_payout_method := ''; p_payout_deadline_days := null;
+  else
+    if p_prize_type in ('cash','gift_card') then
+      select * into pr from profiles where id = me;
+      if pr.created_at > now() - interval '3 days' then
+        raise exception 'Accounts must be at least 3 days old to host a tournament with a cash or gift card prize.';
+      end if;
+      if (_tournament_host_stats(me) ->> 'prizes_not_received')::int >= 2 then
+        raise exception 'You can''t host prize tournaments while winners report unpaid prizes. Contact support.';
+      end if;
+      if coalesce(p_prize_total, 0) <= 0 then raise exception 'Enter the total prize pool.'; end if;
+      if p_prize_currency is null or p_prize_currency !~ '^[A-Z]{3}$' then raise exception 'Choose a currency.'; end if;
+      if char_length(btrim(coalesce(p_payout_method, ''))) < 3 then raise exception 'Say how winners will be paid (for example PayPal or a gift card code).'; end if;
+      if p_payout_deadline_days is null then raise exception 'Say how many days winners will wait for payment.'; end if;
+      if jsonb_typeof(p_prize_split) <> 'array' or jsonb_array_length(p_prize_split) = 0 then raise exception 'Split the prize pool between places.'; end if;
+      for item in select * from jsonb_array_elements(p_prize_split) loop
+        if (item ->> 'place')::int not between 1 and 3 or (item ->> 'place')::int = any(places) then raise exception 'Prize places must be 1st, 2nd or 3rd, once each.'; end if;
+        if coalesce((item ->> 'amount')::numeric, -1) < 0 then raise exception 'Prize amounts can''t be negative.'; end if;
+        places := places || (item ->> 'place')::int;
+        split_sum := split_sum + (item ->> 'amount')::numeric;
+      end loop;
+      if split_sum <> p_prize_total then raise exception 'The prize split (%) must add up to the prize pool (%).', split_sum, p_prize_total; end if;
+    else
+      p_prize_total := null; p_prize_currency := null; p_prize_split := '[]';
+    end if;
+    if char_length(btrim(coalesce(p_prize_description, ''))) < 3 and p_prize_type <> 'cash' then raise exception 'Describe the prize.'; end if;
+  end if;
+
+  insert into tournaments (host_id, game_id, community_id, title, description, rules, team_size, max_entrants, region, platform, starts_at,
+    prize_type, prize_total, prize_currency, prize_description, prize_split, payout_method, payout_deadline_days, host_contact, agreement_version)
+  values (me, p_game, p_community, btrim(p_title), coalesce(p_description, ''), coalesce(p_rules, ''), coalesce(p_team_size, 1), p_max_entrants,
+    nullif(p_region, ''), nullif(p_platform, ''), p_starts_at, coalesce(p_prize_type, 'none'), p_prize_total, p_prize_currency,
+    coalesce(p_prize_description, ''), coalesce(p_prize_split, '[]'), coalesce(p_payout_method, ''), p_payout_deadline_days,
+    coalesce(p_host_contact, ''), p_agreement_version)
+  returning id into tid;
+  insert into tournament_agreements (tournament_id, user_id, role, version) values (tid, me, 'host', p_agreement_version);
+  return tid;
+end $$;
+
+create or replace function public._tournament_in_scope(t tournaments, p_scope text, p_me uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select case coalesce(p_scope, 'upcoming')
+    when 'upcoming' then t.status = 'registration'
+    when 'live' then t.status = 'in_progress'
+    when 'completed' then t.status = 'completed'
+    when 'mine' then t.host_id = p_me or exists (select 1 from tournament_entrants e where e.tournament_id = t.id and p_me = any(e.members))
+    else t.status <> 'cancelled' end
+$$;
+
+create or replace function public.list_tournaments(p_game text default null, p_scope text default 'upcoming', p_search text default null,
+  p_limit int default 24, p_offset int default 0) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare me uuid := _require_user(); pat text; total int; result jsonb;
+begin
+  pat := case when nullif(btrim(p_search), '') is null then null
+              else '%' || replace(replace(replace(btrim(p_search), '\', '\\'), '%', '\%'), '_', '\_') || '%' end;
+  select count(*) into total from tournaments t
+  where _tournament_visible(t, me) and (p_game is null or t.game_id = p_game) and (pat is null or t.title ilike pat)
+    and _tournament_in_scope(t, p_scope, me);
+  select coalesce(jsonb_agg(_tournament_summary(x, me) order by
+           case when p_scope in ('completed','mine') then -extract(epoch from x.starts_at) else extract(epoch from x.starts_at) end), '[]'::jsonb)
+    into result
+  from (
+    select t.* from tournaments t
+    where _tournament_visible(t, me) and (p_game is null or t.game_id = p_game) and (pat is null or t.title ilike pat)
+      and _tournament_in_scope(t, p_scope, me)
+    order by case when p_scope in ('completed','mine') then -extract(epoch from t.starts_at) else extract(epoch from t.starts_at) end
+    limit least(greatest(coalesce(p_limit, 24), 1), 50) offset greatest(coalesce(p_offset, 0), 0)) x;
+  return jsonb_build_object('total', total, 'tournaments', result);
+end $$;
+
+create or replace function public.get_tournament(p_tournament uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare me uuid := _require_user(); t tournaments; my_e tournament_entrants;
+begin
+  select * into t from tournaments where id = p_tournament;
+  if not found or not _tournament_visible(t, me) then return null; end if;
+  select * into my_e from tournament_entrants where tournament_id = t.id and me = any(members);
+  return _tournament_summary(t, me) || jsonb_build_object(
+    'description', t.description, 'rules', t.rules, 'format', t.format, 'prize_split', t.prize_split,
+    'payout_method', t.payout_method, 'payout_deadline_days', t.payout_deadline_days, 'host_contact', t.host_contact,
+    'cancel_reason', t.cancel_reason, 'started_at', t.started_at, 'completed_at', t.completed_at,
+    'agreement_version', t.agreement_version, 'current_agreement_version', tournament_agreement_version(),
+    'host_stats', _tournament_host_stats(t.host_id),
+    'is_moderator', is_moderator(me),
+    'community', (select jsonb_build_object('id', c.id, 'name', c.name, 'icon_color', c.icon_color) from communities c where c.id = t.community_id),
+    'my_entrant', case when my_e.id is null then null else _entrant_json(my_e) end,
+    'am_captain', my_e.captain_id = me,
+    'entrants', coalesce((select jsonb_agg(_entrant_json(e) order by e.final_place nulls last, e.seed nulls last, e.created_at)
+                          from tournament_entrants e where e.tournament_id = t.id), '[]'::jsonb),
+    'matches', coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'round', m.round, 'slot', m.slot, 'entrant_a', m.entrant_a,
+                          'entrant_b', m.entrant_b, 'winner', m.winner, 'score', m.score, 'status', m.status,
+                          'reported_winner', m.reported_winner, 'reported_by', m.reported_by, 'dispute_reason', m.dispute_reason)
+                          order by m.round, m.slot) from tournament_matches m where m.tournament_id = t.id), '[]'::jsonb));
+end $$;
+
+create or replace function public._tournament_notify(p_tournament uuid, p_event text, p_actor uuid, p_only uuid[] default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare t tournaments; u uuid;
+begin
+  select * into t from tournaments where id = p_tournament;
+  for u in select distinct m from tournament_entrants e, unnest(e.members) m where e.tournament_id = p_tournament
+           union select t.host_id where t.host_id is not null loop
+    if p_only is null or u = any(p_only) then
+      perform _notify(u, 'tournament', p_actor, null, null, jsonb_build_object('tournament_id', t.id, 'title', t.title, 'event', p_event));
+    end if;
+  end loop;
+end $$;
+
+create or replace function public.register_tournament(p_tournament uuid, p_team_name text, p_members uuid[] default '{}',
+  p_agreement_version int default null) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_active(); t tournaments; mates uuid[]; u uuid; eid uuid;
+begin
+  if coalesce(p_agreement_version, 0) <> tournament_agreement_version() then
+    raise exception 'Read and accept the Tournament Agreement to enter.';
+  end if;
+  select * into t from tournaments where id = p_tournament for update;
+  if not found or not _tournament_visible(t, me) then raise exception 'Tournament not found.'; end if;
+  if t.status <> 'registration' then raise exception 'Registration is closed.'; end if;
+  if t.host_id = me then raise exception 'Hosts can''t enter their own tournament.'; end if;
+  if exists (select 1 from tournament_entrants where tournament_id = t.id and me = any(members)) then raise exception 'You''re already entered.'; end if;
+  if (select count(*) from tournament_entrants where tournament_id = t.id) >= t.max_entrants then raise exception 'This tournament is full.'; end if;
+  mates := array(select distinct x from unnest(coalesce(p_members, '{}')) x where x is not null and x <> me);
+  if cardinality(mates) <> t.team_size - 1 then
+    raise exception 'Pick % teammate(s) for a team of %.', t.team_size - 1, t.team_size;
+  end if;
+  foreach u in array mates loop
+    if not _are_friends(me, u) then raise exception 'Teammates must be on your friends list.'; end if;
+    if _blocked(u, t.host_id) then raise exception 'One of your teammates can''t join this tournament.'; end if;
+    if exists (select 1 from tournament_entrants where tournament_id = t.id and u = any(members)) then
+      raise exception '% is already entered.', (select username from profiles where id = u);
+    end if;
+    if u = t.host_id then raise exception 'The host can''t play in their own tournament.'; end if;
+  end loop;
+  if char_length(btrim(coalesce(p_team_name, ''))) < 2 then raise exception 'Pick a team name (2–32 characters).'; end if;
+  perform _rate_limit('register_tournament', 20, interval '1 day', 'tournament sign-ups');
+  begin
+    insert into tournament_entrants (tournament_id, captain_id, team_name, members)
+    values (t.id, me, btrim(p_team_name), array[me] || mates) returning id into eid;
+  exception when unique_violation then raise exception 'That team name is taken in this tournament.';
+  end;
+  insert into tournament_agreements (tournament_id, user_id, role, version) values (t.id, me, 'entrant', p_agreement_version)
+  on conflict (tournament_id, user_id, role) do update set version = excluded.version, accepted_at = now();
+  if cardinality(mates) > 0 then perform _tournament_notify(t.id, 'added_to_team', me, mates); end if;
+  return eid;
+end $$;
+
+create or replace function public.withdraw_tournament(p_tournament uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_user(); t tournaments; e tournament_entrants;
+begin
+  select * into t from tournaments where id = p_tournament for update;
+  if not found then raise exception 'Tournament not found.'; end if;
+  if t.status <> 'registration' then raise exception 'You can only withdraw before the tournament starts.'; end if;
+  select * into e from tournament_entrants where tournament_id = t.id and me = any(members);
+  if not found then raise exception 'You''re not entered.'; end if;
+  if e.captain_id = me then
+    delete from tournament_entrants where id = e.id;
+  else
+    update tournament_entrants set members = array_remove(members, me) where id = e.id;
+  end if;
+end $$;
+
+create or replace function public._advance(p_match bigint) returns void
+language plpgsql security definer set search_path = public as $$
+declare m tournament_matches; nxt tournament_matches; t tournaments; loser uuid; rounds int; place2 uuid; amt numeric;
+begin
+  select * into m from tournament_matches where id = p_match;
+  select * into t from tournaments where id = m.tournament_id;
+  loser := case when m.winner = m.entrant_a then m.entrant_b else m.entrant_a end;
+  if loser is not null then update tournament_entrants set eliminated = true where id = loser; end if;
+  select max(round) into rounds from tournament_matches where tournament_id = t.id;
+  if m.round = rounds then
+    -- Final: champion, runner-up, and both semifinal losers share 3rd
+    update tournament_entrants set final_place = 1 where id = m.winner;
+    if loser is not null then update tournament_entrants set final_place = 2 where id = loser; end if;
+    update tournament_entrants e set final_place = 3
+    from tournament_matches sm
+    where sm.tournament_id = t.id and sm.round = rounds - 1 and sm.status = 'done'
+      and e.id = case when sm.winner = sm.entrant_a then sm.entrant_b else sm.entrant_a end and e.final_place is null;
+    -- Prize amounts from the split (3rd place shared equally)
+    if t.prize_type in ('cash','gift_card') then
+      update tournament_entrants e set
+        prize_amount = round((select (x ->> 'amount')::numeric from jsonb_array_elements(t.prize_split) x where (x ->> 'place')::int = e.final_place)
+                       / greatest(1, (select count(*) from tournament_entrants e2 where e2.tournament_id = t.id and e2.final_place = e.final_place)), 2),
+        prize_status = 'pending'
+      where e.tournament_id = t.id and e.final_place is not null
+        and exists (select 1 from jsonb_array_elements(t.prize_split) x where (x ->> 'place')::int = e.final_place and (x ->> 'amount')::numeric > 0);
+    elsif t.prize_type in ('item','other') then
+      update tournament_entrants set prize_status = 'pending' where tournament_id = t.id and final_place = 1;
+    end if;
+    update tournaments set status = 'completed', completed_at = now() where id = t.id;
+    perform _tournament_notify(t.id, 'completed', t.host_id);
+    return;
+  end if;
+  select * into nxt from tournament_matches where tournament_id = t.id and round = m.round + 1 and slot = (m.slot + 1) / 2 for update;
+  if m.slot % 2 = 1 then update tournament_matches set entrant_a = m.winner, updated_at = now() where id = nxt.id;
+  else update tournament_matches set entrant_b = m.winner, updated_at = now() where id = nxt.id; end if;
+  select * into nxt from tournament_matches where id = nxt.id;
+  if nxt.entrant_a is not null and nxt.entrant_b is not null then
+    update tournament_matches set status = 'ready', updated_at = now() where id = nxt.id;
+    perform _tournament_notify(t.id, 'match_ready', null,
+      (select array_agg(c) from (select captain_id c from tournament_entrants where id in (nxt.entrant_a, nxt.entrant_b)) z));
+  end if;
+end $$;
+
+create or replace function public.start_tournament(p_tournament uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_active(); t tournaments; n int; size int := 2; rounds int := 1; seeds int[] := array[1]; nxt int[]; s int;
+        ids uuid[]; i int; a uuid; b uuid; r int; mid bigint;
+begin
+  select * into t from tournaments where id = p_tournament for update;
+  if not found then raise exception 'Tournament not found.'; end if;
+  if t.host_id is distinct from me then raise exception 'Only the host can start the tournament.' using errcode = '42501'; end if;
+  if t.status <> 'registration' then raise exception 'This tournament already started.'; end if;
+  -- Teams that lost members since signing up can't play
+  delete from tournament_entrants where tournament_id = t.id and cardinality(members) < t.team_size;
+  select count(*) into n from tournament_entrants where tournament_id = t.id;
+  if n < 2 then raise exception 'You need at least 2 entrants to start.'; end if;
+  while size < n loop size := size * 2; rounds := rounds + 1; end loop;
+  -- Standard bracket order (1 v 8, 4 v 5, 2 v 7, 3 v 6 …); byes go to the top seeds
+  while cardinality(seeds) < size loop
+    nxt := '{}';
+    foreach s in array seeds loop nxt := nxt || s || (cardinality(seeds) * 2 + 1 - s); end loop;
+    seeds := nxt;
+  end loop;
+  ids := array(select id from tournament_entrants where tournament_id = t.id order by random());
+  for i in 1..n loop update tournament_entrants set seed = i where id = ids[i]; end loop;
+  for r in 1..rounds loop
+    for i in 1..(size / (2 ^ r))::int loop
+      insert into tournament_matches (tournament_id, round, slot) values (t.id, r, i);
+    end loop;
+  end loop;
+  update tournaments set status = 'in_progress', started_at = now() where id = t.id;
+  for i in 1..(size / 2) loop
+    a := case when seeds[2 * i - 1] <= n then ids[seeds[2 * i - 1]] end;
+    b := case when seeds[2 * i] <= n then ids[seeds[2 * i]] end;
+    update tournament_matches set entrant_a = a, entrant_b = b,
+      status = case when a is not null and b is not null then 'ready' else 'done' end,
+      winner = case when a is null then b when b is null then a end
+    where tournament_id = t.id and round = 1 and slot = i returning id into mid;
+    if a is null or b is null then perform _advance(mid); end if;
+  end loop;
+  perform _tournament_notify(t.id, 'started', me);
+end $$;
+
+create or replace function public.report_match(p_match bigint, p_winner uuid, p_score text default '') returns text
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_active(); m tournament_matches; t tournaments; side uuid; other_captain uuid;
+begin
+  select * into m from tournament_matches where id = p_match for update;
+  if not found then raise exception 'Match not found.'; end if;
+  select * into t from tournaments where id = m.tournament_id;
+  if t.status <> 'in_progress' then raise exception 'This tournament isn''t running.'; end if;
+  if m.status not in ('ready','reported','disputed') then raise exception 'This match can''t be reported.'; end if;
+  if p_winner is null or p_winner not in (m.entrant_a, m.entrant_b) then raise exception 'Pick the winner from this match.'; end if;
+  if t.host_id = me or is_moderator(me) then
+    update tournament_matches set winner = p_winner, score = left(coalesce(p_score, ''), 40), status = 'done',
+      reported_by = me, reported_winner = p_winner, updated_at = now() where id = m.id;
+    perform _advance(m.id);
+    return 'done';
+  end if;
+  select e.id into side from tournament_entrants e where e.id in (m.entrant_a, m.entrant_b) and e.captain_id = me;
+  if side is null then raise exception 'Only team captains or the host can report this match.' using errcode = '42501'; end if;
+  other_captain := (select captain_id from tournament_entrants where id = case when side = m.entrant_a then m.entrant_b else m.entrant_a end);
+  if m.status = 'disputed' then raise exception 'This match is disputed — the host will decide the result.'; end if;
+  if m.status = 'reported' and m.reported_by is distinct from me then
+    if m.reported_winner = p_winner then
+      update tournament_matches set winner = p_winner, status = 'done', updated_at = now(),
+        score = case when coalesce(p_score, '') = '' then score else left(p_score, 40) end where id = m.id;
+      perform _advance(m.id);
+      return 'done';
+    end if;
+    update tournament_matches set status = 'disputed', dispute_reason = 'Captains reported different winners.', updated_at = now() where id = m.id;
+    perform _tournament_notify(t.id, 'disputed', me, array[t.host_id]);
+    return 'disputed';
+  end if;
+  update tournament_matches set status = 'reported', reported_by = me, reported_winner = p_winner,
+    score = left(coalesce(p_score, ''), 40), updated_at = now() where id = m.id;
+  perform _tournament_notify(t.id, 'result_reported', me, array[other_captain]);
+  return 'reported';
+end $$;
+
+create or replace function public.dispute_match(p_match bigint, p_reason text) returns void
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_active(); m tournament_matches; t tournaments;
+begin
+  select * into m from tournament_matches where id = p_match for update;
+  if not found then raise exception 'Match not found.'; end if;
+  select * into t from tournaments where id = m.tournament_id;
+  if not exists (select 1 from tournament_entrants e where e.id in (m.entrant_a, m.entrant_b) and e.captain_id = me) then
+    raise exception 'Only the captains in this match can dispute it.' using errcode = '42501';
+  end if;
+  if m.status not in ('ready','reported') or t.status <> 'in_progress' then raise exception 'This match can''t be disputed now.'; end if;
+  if char_length(btrim(coalesce(p_reason, ''))) < 5 then raise exception 'Explain the problem in a few words.'; end if;
+  update tournament_matches set status = 'disputed', dispute_reason = left(btrim(p_reason), 300), updated_at = now() where id = m.id;
+  perform _tournament_notify(t.id, 'disputed', me, array[t.host_id]);
+end $$;
+
+create or replace function public.cancel_tournament(p_tournament uuid, p_reason text default '') returns void
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_user(); t tournaments;
+begin
+  select * into t from tournaments where id = p_tournament for update;
+  if not found then raise exception 'Tournament not found.'; end if;
+  if t.host_id is distinct from me and not is_moderator(me) then raise exception 'Only the host can cancel.' using errcode = '42501'; end if;
+  if t.status not in ('registration','in_progress') then raise exception 'This tournament is already over.'; end if;
+  update tournaments set status = 'cancelled', cancel_reason = left(coalesce(p_reason, ''), 300) where id = t.id;
+  perform _tournament_notify(t.id, 'cancelled', me);
+end $$;
+
+-- Payout tracking: host marks a prize sent; the winning team confirms it arrived (or didn't).
+create or replace function public.set_prize_status(p_entrant uuid, p_status text) returns void
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_user(); e tournament_entrants; t tournaments;
+begin
+  select * into e from tournament_entrants where id = p_entrant for update;
+  if not found then raise exception 'Entry not found.'; end if;
+  select * into t from tournaments where id = e.tournament_id;
+  if t.status <> 'completed' or e.prize_status = 'none' then raise exception 'There is no prize to update for this team.'; end if;
+  if p_status = 'sent' then
+    if t.host_id is distinct from me then raise exception 'Only the host can mark a prize as sent.' using errcode = '42501'; end if;
+    if e.prize_status not in ('pending','not_received') then raise exception 'This prize is already marked %.', e.prize_status; end if;
+  elsif p_status in ('received','not_received') then
+    if not (me = any(e.members)) then raise exception 'Only the winning team can confirm this.' using errcode = '42501'; end if;
+    if p_status = 'not_received' and t.completed_at > now() - make_interval(days => coalesce(t.payout_deadline_days, 7)) and e.prize_status <> 'sent' then
+      raise exception 'The host has until % to pay. You can report it after that.', to_char(t.completed_at + make_interval(days => coalesce(t.payout_deadline_days, 7)), 'Mon DD');
+    end if;
+  else
+    raise exception 'Invalid prize status.';
+  end if;
+  update tournament_entrants set prize_status = p_status where id = e.id;
+  if p_status = 'sent' then
+    perform _tournament_notify(t.id, 'prize_sent', me, e.members);
+  elsif p_status = 'not_received' and t.host_id is not null then
+    -- Unpaid prizes go straight to the moderators
+    insert into reports (reporter_id, reported_user_id, reported_username, category, description, tournament_id)
+    values (me, t.host_id, (select username from profiles where id = t.host_id), 'scam',
+            'Prize not received for tournament "' || t.title || '" (' || coalesce(e.prize_amount::text || ' ' || coalesce(t.prize_currency, ''), t.prize_description) || ').', t.id);
+    perform _tournament_notify(t.id, 'prize_not_received', me, array[t.host_id]);
+  end if;
+end $$;
+
+create or replace function public.report_tournament(p_tournament uuid, p_category text, p_description text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_user(); t tournaments; rid uuid;
+begin
+  select * into t from tournaments where id = p_tournament;
+  if not found or t.host_id is null then raise exception 'Tournament not found.'; end if;
+  if t.host_id = me then raise exception 'You can''t report your own tournament.'; end if;
+  if p_category not in ('scam','cheating','harassment','spam','other') then raise exception 'Choose a category.'; end if;
+  if char_length(btrim(coalesce(p_description, ''))) < 10 then raise exception 'Please describe what happened (at least 10 characters).'; end if;
+  perform _rate_limit('report', 10, interval '1 day', 'reports');
+  insert into reports (reporter_id, reported_user_id, reported_username, category, description, tournament_id)
+  values (me, t.host_id, (select username from profiles where id = t.host_id), p_category,
+          left('[Tournament: ' || t.title || '] ' || btrim(p_description), 1000), t.id)
+  returning id into rid;
+  return rid;
+end $$;
+
+-- =============================================================================
+-- OFFICIAL GAME COMMUNITIES (one per game, created idempotently)
+-- =============================================================================
+do $$
+declare g games; cid uuid;
+begin
+  for g in select * from games where is_active order by sort_order loop
+    if not exists (select 1 from communities where is_official and game_id = g.id) then
+      insert into communities (name, description, icon_color, owner_id, game_id, is_public, is_official)
+      values (left(g.name, 40), left('The official PartyUp community for ' || g.name || ' players. Find teammates, share clips, hop in voice and join tournaments.', 300),
+              g.accent_color, null, g.id, true, true)
+      returning id into cid;
+      insert into channels (community_id, name, topic, kind, position) values
+        (cid, 'announcements', 'News, events and tournaments', 'announcement', 0),
+        (cid, 'general', left('Talk about ' || g.name, 200), 'text', 1),
+        (cid, 'looking-for-group', 'Post when you want to play', 'text', 2),
+        (cid, 'clips-and-highlights', 'Show off your best plays', 'text', 3),
+        (cid, 'tournaments', 'Find or organize tournaments', 'text', 4),
+        (cid, 'lobby', 'Hang out in voice', 'voice', 5),
+        (cid, 'squad-up', 'Voice for your squad', 'voice', 6);
+    end if;
+  end loop;
+end $$;
+
+-- Counts now include calls ringing in my chats
+create or replace function public.get_counts() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare me uuid := _require_user();
+begin
+  return jsonb_build_object(
+    'notifications', (select count(*) from notifications where user_id = me and read_at is null),
+    'messages', (select count(*) from conversation_members cm join conversations c on c.id = cm.conversation_id
+                 join messages m on m.conversation_id = cm.conversation_id
+                 where cm.user_id = me and c.kind <> 'channel' and not cm.muted and m.created_at > cm.last_read_at
+                   and m.sender_id is distinct from me and (m.sender_id is null or not _mutes(me, m.sender_id))),
+    'mentions', (select count(*) from notifications where user_id = me and type = 'mention' and read_at is null),
+    'friend_requests', (select count(*) from friendships where addressee_id = me and status = 'pending'),
+    'party_invites', (select count(*) from party_invites where invitee_id = me and status = 'pending'),
+    'open_reports', case when is_moderator(me) then (select count(*) from reports where status in ('open','in_review')) end,
+    'calls', my_calls());
+end $$;
+
+-- =============================================================================
+-- v3 privileges, realtime authorization for call signaling
+-- =============================================================================
+revoke all on public.voice_participants, public.tournaments, public.tournament_entrants, public.tournament_matches,
+  public.tournament_agreements from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+revoke execute on function public._room_ok(text, uuid), public._voice_people(text), public._tournament_host_stats(uuid),
+  public._tournament_visible(public.tournaments, uuid), public._entrant_json(public.tournament_entrants),
+  public._tournament_summary(public.tournaments, uuid), public._tournament_in_scope(public.tournaments, text, uuid), public._tournament_notify(uuid, text, uuid, uuid[]), public._advance(bigint)
+  from public, anon, authenticated;
+do $$
+declare fn text;
+begin
+  foreach fn in array array[
+    'can_use_room(text)','voice_join(text)','voice_heartbeat(text,boolean,boolean,boolean,boolean)','voice_leave(text)',
+    'voice_state(text)','my_calls()','get_counts()','tournament_agreement_version()',
+    'create_tournament(text,text,timestamptz,integer,integer,text,text,text,text,text,numeric,text,text,jsonb,text,integer,text,uuid,integer)',
+    'list_tournaments(text,text,text,integer,integer)','get_tournament(uuid)','register_tournament(uuid,text,uuid[],integer)',
+    'withdraw_tournament(uuid)','start_tournament(uuid)','report_match(bigint,uuid,text)','dispute_match(bigint,text)',
+    'cancel_tournament(uuid,text)','set_prize_status(uuid,text)','report_tournament(uuid,text,text)'
+  ] loop
+    execute format('revoke execute on function public.%s from public, anon', fn);
+    execute format('grant execute on function public.%s to authenticated', fn);
+  end loop;
+end $$;
+
+-- Private Realtime channels "call:<room>": only people allowed in the room may listen or send.
+do $$
+begin
+  if exists (select 1 from pg_tables where schemaname = 'realtime' and tablename = 'messages') then
+    execute 'drop policy if exists "partyup_call_read" on realtime.messages';
+    execute 'drop policy if exists "partyup_call_write" on realtime.messages';
+    execute $p$create policy "partyup_call_read" on realtime.messages for select to authenticated
+               using (realtime.topic() like 'call:%' and public.can_use_room(substr(realtime.topic(), 6)))$p$;
+    execute $p$create policy "partyup_call_write" on realtime.messages for insert to authenticated
+               with check (realtime.topic() like 'call:%' and public.can_use_room(substr(realtime.topic(), 6)))$p$;
+  end if;
+end $$;
 
 -- Pin search_path on every remaining PartyUp function (Supabase security advisor 0011).
 do $$

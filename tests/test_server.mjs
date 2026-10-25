@@ -40,10 +40,23 @@ function retType(name) {
   return retTypes.get(name);
 }
 
+const argTypes = new Map();
+function argType(name, arg) {
+  if (!argTypes.has(name)) {
+    const r = sql(`select '@@' || coalesce(jsonb_object_agg(n, t), '{}')::text from (select unnest(proargnames) n, unnest(proargtypes::regtype[])::text t from pg_proc where proname = ${lit(name)} and pronamespace = 'public'::regnamespace limit 50) x;`);
+    argTypes.set(name, r.out ? JSON.parse(r.out) : {});
+  }
+  return argTypes.get(name)[arg];
+}
+
 function handleRpc({ name, args = {}, token }) {
   if (!token) return { error: { message: 'permission denied (anon)' } };
   ident(name);
-  const named = Object.entries(args).map(([k, v]) => `${ident(k)} => ${lit(v)}`).join(', ');
+  const named = Object.entries(args).map(([k, v]) => {
+    const t = argType(name, k);
+    if (t === 'jsonb' && v !== null && v !== undefined) return `${ident(k)} => '${JSON.stringify(v).replace(/'/g, "''")}'::jsonb`;
+    return `${ident(k)} => ${lit(v)}`;
+  }).join(', ');
   const t = retType(name);
   if (t === 'void') {
     const v = sql(`select public.${name}(${named}); select '@@null';`, token);
@@ -104,6 +117,15 @@ function handleAuth(kind, body) {
   return { error: { message: 'unknown' } };
 }
 
+// Realtime broadcast stand-in (Server-Sent Events). Topics "call:<room>" are
+// authorized with the same can_use_room() check the Realtime policies use.
+const streams = new Map(); // topic -> Set<{res, cid}>
+function allowed(topic, token) {
+  if (!token || !topic.startsWith('call:')) return false;
+  const r = handleRpc({ name: 'can_use_room', args: { p_room: topic.slice(5) }, token });
+  return r.data === true;
+}
+
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
 http.createServer((req, res) => {
   if (req.method === 'POST') {
@@ -113,7 +135,15 @@ http.createServer((req, res) => {
       let out;
       try {
         const b = JSON.parse(body || '{}');
-        if (req.url === '/rpc') out = handleRpc(b);
+        if (req.url === '/broadcast') {
+          if (!allowed(b.topic, b.token)) out = { error: { message: 'unauthorized' } };
+          else {
+            for (const c of streams.get(b.topic) || []) {
+              if (c.cid !== b.cid) c.res.write(`data: ${JSON.stringify({ event: b.event, payload: b.payload })}\n\n`);
+            }
+            out = { data: 'ok' };
+          }
+        } else if (req.url === '/rpc') out = handleRpc(b);
         else if (req.url === '/query') out = handleQuery(b);
         else if (req.url.startsWith('/auth/')) out = handleAuth(req.url.slice(6), b);
         else out = { error: { message: 'not found' } };
@@ -124,6 +154,18 @@ http.createServer((req, res) => {
     return;
   }
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }); return res.end(); }
+  if (req.url.startsWith('/broadcast/stream')) {
+    const u = new URL(req.url, 'http://x');
+    const topic = u.searchParams.get('topic'); const token = u.searchParams.get('token'); const cid = u.searchParams.get('cid');
+    if (!allowed(topic, token)) { res.writeHead(403, { 'access-control-allow-origin': '*' }); return res.end(); }
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive', 'access-control-allow-origin': '*' });
+    res.write(': ok\n\n');
+    if (!streams.has(topic)) streams.set(topic, new Set());
+    const entry = { res, cid };
+    streams.get(topic).add(entry);
+    req.on('close', () => streams.get(topic)?.delete(entry));
+    return undefined;
+  }
   if (req.url.startsWith('/auth/v1/settings')) {
     // Same shape as Supabase Auth's public settings endpoint (OAuth providers switched on).
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });

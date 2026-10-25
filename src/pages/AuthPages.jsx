@@ -7,6 +7,20 @@ import { useApp } from '../context/AppContext.jsx';
 import Logo from '../components/Logo.jsx';
 import { Button, Field, Input, InlineError } from '../components/ui.jsx';
 import { useToast } from '../components/feedback.jsx';
+import { Pumpkin, useSeason } from '../components/Seasonal.jsx';
+import { randomLine } from '../lib/flavor.js';
+
+function AuthFact() {
+  const season = useSeason();
+  const [line, setLine] = useState(() => randomLine());
+  useEffect(() => { const t = setInterval(() => setLine(randomLine()), 7000); return () => clearInterval(t); }, []);
+  return (
+    <div className="auth-fact">
+      {season === 'halloween' && <Pumpkin size={40} className="bob" />}
+      <p key={line}>{line}</p>
+    </div>
+  );
+}
 
 function AuthLayout({ title, sub, children, foot }) {
   return (
@@ -18,8 +32,10 @@ function AuthLayout({ title, sub, children, foot }) {
           <ul className="auth-points">
             <li>Match on rank, roles, language, region and schedule</li>
             <li>Build parties with open slots and needed roles</li>
+            <li>Communities, DMs and group chats</li>
             <li>Block, mute and report built in</li>
           </ul>
+          <AuthFact />
         </div>
       </div>
       <div className="auth-main">
@@ -95,11 +111,67 @@ function GoogleButton({ label = 'Continue with Google' }) {
 function authError(e) {
   const m = e?.message || '';
   if (/invalid login credentials/i.test(m)) return new Error('Email or password is incorrect.');
-  if (/email not confirmed/i.test(m)) return new Error('Confirm your email first — check your inbox for the link.');
+  if (/email not confirmed/i.test(m)) return new Error('Confirm your email first — use the code or button in the email we sent.');
   if (/user already registered/i.test(m)) return new Error('An account with this email already exists. Sign in instead.');
   if (/rate limit/i.test(m)) return new Error('Too many attempts. Wait a minute and try again.');
   if (/Failed to fetch|NetworkError/i.test(m)) return new Error("Can't reach PartyUp right now. Check your internet connection and try again.");
   return e;
+}
+
+// Enter the code from the email (works anywhere, no link needed) — or click the email's button.
+function VerifyCode({ email, kind, onBack }) {
+  const { setRecovery } = useApp();
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [cooldown, setCooldown] = useState(45);
+  const [resent, setResent] = useState(false);
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+  const verify = async (e) => {
+    e?.preventDefault(); setErr(null);
+    const token = code.replace(/\D/g, '');
+    if (token.length < 6) return setErr(new Error('Enter the code from the email.'));
+    setBusy(true);
+    const { error } = await supabase.auth.verifyOtp({ email, token, type: kind === 'recovery' ? 'recovery' : 'signup' });
+    setBusy(false);
+    if (error) {
+      setErr(/expired|invalid/i.test(error.message) ? new Error("That code didn't work — it may have expired. Check the newest email or send a new code.") : authError(error));
+      return;
+    }
+    if (kind === 'recovery') { setRecovery(true); navigate('/reset', { replace: true }); }
+    // signup: the new session signs them in and the app moves on to onboarding
+  };
+  const resend = async () => {
+    setErr(null); setResent(false);
+    const { error } = kind === 'recovery'
+      ? await supabase.auth.resetPasswordForEmail(email, { redirectTo: authRedirect() })
+      : await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: authRedirect() } });
+    if (error) return setErr(authError(error));
+    setResent(true); setCooldown(60);
+  };
+  return (
+    <div className="stack">
+      <div className="notice"><LuMailCheck aria-hidden /><p>We sent a code to <b>{email}</b>. Type it below, or press the button in the email{desktop ? ' — it reopens PartyUp' : ''}.</p></div>
+      <form onSubmit={verify} className="stack">
+        <Field label={kind === 'recovery' ? 'Reset code' : 'Verification code'} htmlFor="otp">
+          <Input id="otp" className="otp-input" inputMode="numeric" autoComplete="one-time-code" maxLength={10} placeholder="••••••"
+            value={code} onChange={(e) => setCode(e.target.value.replace(/[^\d ]/g, ''))} autoFocus />
+        </Field>
+        <InlineError error={err} />
+        <Button type="submit" variant="primary" size="lg" loading={busy}>{kind === 'recovery' ? 'Continue' : 'Verify and continue'}</Button>
+      </form>
+      <p className="small muted">
+        No email? Check spam, or{' '}
+        {cooldown > 0 ? <span>send a new code in {cooldown}s</span> : <Button variant="link" onClick={resend}>send a new code</Button>}
+        {resent && ' — sent!'}
+        {onBack && <> · <Button variant="link" onClick={onBack}>use a different email</Button></>}
+      </p>
+    </div>
+  );
 }
 
 export function LoginPage() {
@@ -108,14 +180,27 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const submit = async (e) => {
-    e.preventDefault(); setBusy(true); setErr(null);
+    e.preventDefault(); setBusy(true); setErr(null); setUnconfirmed(false);
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     setBusy(false);
-    if (error) setErr(authError(error));
+    if (error) { setErr(authError(error)); setUnconfirmed(/email not confirmed/i.test(error.message)); }
   };
+  const startVerify = async () => {
+    await supabase.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: authRedirect() } });
+    setVerifying(true);
+  };
+  if (verifying) {
+    return (
+      <AuthLayout title="Verify your email" foot={<Link to="/login" onClick={() => setVerifying(false)}>Back to sign in</Link>}>
+        <VerifyCode email={email.trim()} kind="signup" onBack={() => setVerifying(false)} />
+      </AuthLayout>
+    );
+  }
   return (
-    <AuthLayout title="Sign in" foot={<>New to PartyUp? <Link to="/signup">Create an account</Link></>}>
+    <AuthLayout title="Welcome back" foot={<>New to PartyUp? <Link to="/signup">Create an account</Link></>}>
       <InlineError error={redirectError} />
       <GoogleButton />
       <form onSubmit={submit} className="stack">
@@ -125,6 +210,7 @@ export function LoginPage() {
         </Field>
         <div className="row between"><Link to="/forgot" className="small">Forgot password?</Link></div>
         <InlineError error={err} />
+        {unconfirmed && <Button onClick={startVerify}>Send me a verification code</Button>}
         <Button type="submit" variant="primary" size="lg" loading={busy}>Sign in</Button>
       </form>
     </AuthLayout>
@@ -150,8 +236,8 @@ export function SignupPage() {
   };
   if (sent) {
     return (
-      <AuthLayout title="Check your email" foot={<Link to="/login">Back to sign in</Link>}>
-        <div className="notice"><LuMailCheck aria-hidden /><p>We sent a confirmation link to <b>{email}</b>. Open it on this device to finish creating your account.{desktop ? ' The link reopens the PartyUp app.' : ''}</p></div>
+      <AuthLayout title="Check your email" sub="One quick step and you're in." foot={<Link to="/login">Back to sign in</Link>}>
+        <VerifyCode email={email.trim()} kind="signup" onBack={() => setSent(false)} />
       </AuthLayout>
     );
   }
@@ -182,14 +268,14 @@ export function ForgotPage() {
     if (error) setErr(authError(error)); else setSent(true);
   };
   return (
-    <AuthLayout title="Reset your password" sub={sent ? null : "Enter your email and we'll send you a reset link."} foot={<Link to="/login">Back to sign in</Link>}>
+    <AuthLayout title="Reset your password" sub={sent ? 'If an account exists for that email, a code is on its way.' : "Enter your email and we'll send you a reset code."} foot={<Link to="/login">Back to sign in</Link>}>
       {sent ? (
-        <div className="notice"><LuMailCheck aria-hidden /><p>If an account exists for <b>{email}</b>, a reset link is on its way. The link opens {desktop ? 'PartyUp' : 'a page'} where you choose a new password.</p></div>
+        <VerifyCode email={email.trim()} kind="recovery" onBack={() => setSent(false)} />
       ) : (
         <form onSubmit={submit} className="stack">
           <Field label="Email" htmlFor="fp-email"><Input id="fp-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
           <InlineError error={err} />
-          <Button type="submit" variant="primary" size="lg" loading={busy}>Send reset link</Button>
+          <Button type="submit" variant="primary" size="lg" loading={busy}>Send reset code</Button>
         </form>
       )}
     </AuthLayout>

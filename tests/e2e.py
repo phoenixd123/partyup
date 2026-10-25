@@ -37,7 +37,7 @@ def shot(page, name):
 
 def signup(page, email):
     page.goto(BASE)
-    expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
+    expect(page.get_by_role("heading", name="Welcome back")).to_be_visible()
     page.get_by_role("link", name="Create an account").click()
     page.get_by_label("Email").fill(email)
     page.get_by_label("Password", exact=True).fill("password123")
@@ -82,7 +82,7 @@ with sync_playwright() as p:
     rosa.get_by_role("button", name="Continue").click()
     rosa.get_by_role("group", name="Teammate traits").get_by_role("button", name="Clear callouts").click()
     rosa.get_by_role("button", name="Finish setup").click()
-    expect(rosa.get_by_role("heading", name="Ready to queue, RosaQueue?")).to_be_visible(timeout=10000)
+    expect(rosa.locator(".dash-hero h1", has_text="RosaQueue")).to_be_visible(timeout=10000)
     step("onboarding saved and dashboard shown")
     assert db("select count(*) from user_game_profiles g join profiles p on p.id=g.user_id where p.username='RosaQueue'") == "2"
     assert db("select rank from user_game_profiles g join profiles p on p.id=g.user_id where p.username='RosaQueue' and game_id='valorant'") == "Platinum"
@@ -160,7 +160,7 @@ with sync_playwright() as p:
     for _ in range(4):
         bravo.get_by_role("button", name="Skip for now").click()
     bravo.get_by_role("button", name="Skip and finish").click()
-    expect(bravo.get_by_role("heading", name="Ready to queue, TeamBravo?")).to_be_visible()
+    expect(bravo.locator(".dash-hero h1", has_text="TeamBravo")).to_be_visible()
     shot(bravo, "09-mobile-dashboard")
     step("second user onboarded with skips (mobile viewport)")
 
@@ -317,7 +317,7 @@ with sync_playwright() as p:
     bravo.get_by_role("button", name="Delete account").click()
     bravo.get_by_role("dialog").get_by_role("textbox").fill("TeamBravo")
     bravo.get_by_role("button", name="Delete my account").click()
-    expect(bravo.get_by_role("heading", name="Sign in")).to_be_visible(timeout=10000)
+    expect(bravo.get_by_role("heading", name="Welcome back")).to_be_visible(timeout=10000)
     assert db("select count(*) from profiles where username='TeamBravo'") == "0"
     step("account deleted after typed confirmation")
 
@@ -334,7 +334,7 @@ with sync_playwright() as p:
                   "#/messages", "#/games", "#/notifications", "#/settings/profile", "#/settings/privacy", "#/settings/safety",
                   "#/settings/account", "#/moderation", f"#/players/{rid_}"]:
         m.goto(BASE + route); m.wait_for_timeout(700)
-        wide = m.evaluate("[...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && !e.closest('.sidebar,.filters,.toasts,.settings-nav')).slice(0,3).map(e => e.className || e.tagName)")
+        wide = m.evaluate("[...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && !e.closest('.sidebar,.filters,.toasts,.settings-nav,.season-decor')).slice(0,3).map(e => e.className || e.tagName)")
         assert not wide, f"horizontal overflow on mobile at {route}: {wide}"
     step("no horizontal overflow on 16 mobile routes")
     browser.close()
