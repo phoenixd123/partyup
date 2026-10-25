@@ -404,6 +404,11 @@ alter table public.profiles add column if not exists avatar_decoration text not 
 alter table public.profiles add column if not exists profile_effect text not null default 'none'
   check (profile_effect in ('none','snow','sparkles','embers','bats','confetti','stars'));
 alter table public.profiles add column if not exists status_emoji text not null default '' check (char_length(status_emoji) <= 8);
+-- v4: XP & levels (server-awarded only), Ready-to-play beacon
+alter table public.profiles add column if not exists xp int not null default 0;
+alter table public.profiles add column if not exists beacon_game text references public.games(id) on update cascade on delete set null;
+alter table public.profiles add column if not exists beacon_until timestamptz;
+alter table public.profiles add column if not exists beacon_note text not null default '' check (char_length(beacon_note) <= 80);
 
 alter table public.conversations add column if not exists name text check (char_length(name) <= 40);
 alter table public.conversations add column if not exists owner_id uuid references public.profiles(id) on delete set null;
@@ -436,7 +441,7 @@ create index if not exists messages_pinned_idx on public.messages (conversation_
 alter table public.notifications drop constraint if exists notifications_type_check;
 alter table public.notifications add constraint notifications_type_check check (type in ('friend_request','friend_accepted','party_invite',
   'party_invite_accepted','join_request','join_accepted','join_rejected','party_removed','party_leadership','party_closed',
-  'message','mention','group_added','report_update','moderation','call','tournament'));
+  'message','mention','group_added','report_update','moderation','call','tournament','beacon','endorsed','level_up'));
 
 create table if not exists public.message_reactions (
   message_id  bigint not null references public.messages(id) on delete cascade,
@@ -568,6 +573,11 @@ create or replace function public._slot_now() returns int language sql stable as
   select ((extract(isodow from (now() at time zone 'utc'))::int - 1) * 24 + extract(hour from (now() at time zone 'utc'))::int)
 $$;
 
+-- Level curve: level n needs 50·(n-1)² XP (1 → 0, 2 → 50, 3 → 200, 5 → 800, 10 → 4050 …)
+create or replace function public._level(p_xp int) returns int language sql immutable as $$
+  select floor(sqrt(greatest(coalesce(p_xp, 0), 0) / 50.0))::int + 1
+$$;
+
 create or replace function public._overlap(a smallint[], b smallint[]) returns int language sql immutable as $$
   select count(*)::int from (select unnest(a) intersect select unnest(b)) x
 $$;
@@ -604,6 +614,11 @@ select p.id,
        p.name_style,
        p.avatar_decoration,
        p.profile_effect,
+       p.xp,
+       public._level(p.xp) as level,
+       case when p.discoverable and p.beacon_until > now() then p.beacon_game end as beacon_game,
+       case when p.discoverable and p.beacon_until > now() then p.beacon_until end as beacon_until,
+       case when p.discoverable and p.beacon_until > now() then p.beacon_note end as beacon_note,
        p.discoverable,
        p.allow_friend_requests,
        p.allow_party_invites,
@@ -636,7 +651,7 @@ language sql stable security definer set search_path = public as $$
                             'region', pp.region, 'custom_status', pp.custom_status, 'status_emoji', pp.status_emoji,
                             'name_style', pp.name_style, 'avatar_decoration', pp.avatar_decoration,
                             'banner_url', pp.banner_url, 'theme_color', pp.theme_color, 'theme_color_2', pp.theme_color_2,
-                            'profile_effect', pp.profile_effect)
+                            'profile_effect', pp.profile_effect, 'level', pp.level)
   from public_profiles pp where pp.id = p_user
 $$;
 
@@ -767,6 +782,7 @@ begin
      or (p_type = 'group_added' and not pr.notify_messages)
      or (p_type = 'call' and not pr.notify_messages)
      or (p_type = 'tournament' and not pr.notify_request_updates)
+     or (p_type = 'beacon' and not pr.notify_party_invites)
      or (p_type = 'message' and p_conv is not null
          and exists (select 1 from conversation_members cm where cm.conversation_id = p_conv and cm.user_id = p_user and cm.muted)) then
     return;
@@ -990,6 +1006,8 @@ language sql stable security definer set search_path = public as $$
     'region', pp.region, 'languages', pp.languages, 'platforms', pp.platforms,
     'mic_preference', pp.mic_preference, 'playstyles', pp.playstyles, 'looking_for', pp.looking_for,
     'status', pp.status, 'last_active_at', pp.last_active_at, 'is_demo', pp.is_demo,
+    'level', pp.level, 'name_style', pp.name_style, 'avatar_decoration', pp.avatar_decoration,
+    'beacon_game', pp.beacon_game, 'beacon_until', pp.beacon_until,
     'overlap_hours', (select _overlap(v.availability, pp.availability) from profiles v where v.id = p_viewer),
     'has_schedule', cardinality(pp.availability) > 0,
     'relationship', _relationship(p_viewer, pp.id),
@@ -1079,6 +1097,8 @@ begin
     'theme_color', pp.theme_color, 'theme_color_2', pp.theme_color_2, 'name_style', pp.name_style,
     'avatar_decoration', pp.avatar_decoration, 'profile_effect', pp.profile_effect,
     'tournament_stats', _tournament_host_stats(p_user),
+    'xp', pp.xp, 'level', pp.level, 'endorsements', _endorsement_summary(p_user),
+    'beacon', case when pp.beacon_game is not null then jsonb_build_object('game', pp.beacon_game, 'until', pp.beacon_until, 'note', pp.beacon_note) end,
     'is_self', p_user = me,
     'muted_by_me', _mutes(me, p_user),
     'can_message', p_user <> me and (pp.allow_messages = 'everyone' or (pp.allow_messages = 'friends' and _are_friends(me, p_user))),
@@ -2823,7 +2843,7 @@ begin
     'is_moderator(uuid)','is_blocked_between(uuid,uuid)','is_party_member(uuid)','is_party_leader(uuid)',
     'has_party_invite(uuid)','is_conversation_member(uuid)',
     -- used by the public views
-    '_display_status(public.profiles)',
+    '_display_status(public.profiles)','_level(integer)',
     -- client API
     'heartbeat()','is_username_available(text)','am_i_moderator()','get_compatibility(uuid,text)',
     'find_players(text,text,text,text,integer,integer,text,text,text,text,boolean,text,text,integer,integer,boolean)',
@@ -3759,6 +3779,333 @@ begin
     execute $p$create policy "partyup_call_write" on realtime.messages for insert to authenticated
                with check (realtime.topic() like 'call:%' and public.can_use_room(substr(realtime.topic(), 6)))$p$;
   end if;
+end $$;
+
+
+-- #############################################################################
+-- v4: XP, LEVELS & DAILY QUESTS · GG ENDORSEMENTS · READY-TO-PLAY BEACONS
+-- #############################################################################
+
+-- XP is only ever granted by the server (triggers / functions below). Each award
+-- has a unique (user, kind, ref) so the same action can't be farmed.
+create table if not exists public.xp_events (
+  id          bigint generated always as identity primary key,
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  kind        text not null,
+  ref         text not null,
+  amount      int not null check (amount between 0 and 1000),
+  created_at  timestamptz not null default now(),
+  unique (user_id, kind, ref)
+);
+create index if not exists xp_events_user_day_idx on public.xp_events (user_id, created_at desc);
+alter table public.xp_events enable row level security;
+
+create or replace function public._award(p_user uuid, p_kind text, p_ref text, p_amount int) returns void
+language plpgsql security definer set search_path = public as $$
+declare before_xp int; got int;
+begin
+  if p_user is null then return; end if;
+  if exists (select 1 from profiles where id = p_user and (is_demo or is_banned)) then return; end if;
+  insert into xp_events (user_id, kind, ref, amount) values (p_user, p_kind, left(p_ref, 120), p_amount)
+  on conflict (user_id, kind, ref) do nothing;
+  get diagnostics got = row_count;
+  if got = 0 then return; end if;
+  update profiles set xp = xp + p_amount where id = p_user returning xp - p_amount into before_xp;
+  if _level(before_xp + p_amount) > _level(before_xp) then
+    insert into notifications (user_id, type, data)
+    values (p_user, 'level_up', jsonb_build_object('level', _level(before_xp + p_amount)));
+  end if;
+end $$;
+
+create or replace function public._xp_on_party_member() returns trigger language plpgsql security definer set search_path = public as $$
+begin perform _award(new.user_id, 'party_join', new.party_id::text, 30); return null; end $$;
+drop trigger if exists trg_xp_party_member on public.party_members;
+create trigger trg_xp_party_member after insert on public.party_members for each row execute function public._xp_on_party_member();
+
+create or replace function public._xp_on_party() returns trigger language plpgsql security definer set search_path = public as $$
+begin perform _award(new.leader_id, 'party_create', new.id::text, 40); return null; end $$;
+drop trigger if exists trg_xp_party on public.parties;
+create trigger trg_xp_party after insert on public.parties for each row execute function public._xp_on_party();
+
+create or replace function public._xp_on_message() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.sender_id is not null then
+    perform _award(new.sender_id, 'message', to_char(now() at time zone 'utc', 'YYYY-MM-DD') || ':' || new.conversation_id, 5);
+  end if;
+  return null;
+end $$;
+drop trigger if exists trg_xp_message on public.messages;
+create trigger trg_xp_message after insert on public.messages for each row execute function public._xp_on_message();
+
+create or replace function public._xp_on_friend() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'accepted' and (tg_op = 'INSERT' or old.status is distinct from 'accepted') then
+    perform _award(new.requester_id, 'friend', new.addressee_id::text, 25);
+    perform _award(new.addressee_id, 'friend', new.requester_id::text, 25);
+  end if;
+  return null;
+end $$;
+drop trigger if exists trg_xp_friend on public.friendships;
+create trigger trg_xp_friend after insert or update on public.friendships for each row execute function public._xp_on_friend();
+
+create or replace function public._xp_on_community() returns trigger language plpgsql security definer set search_path = public as $$
+begin perform _award(new.user_id, 'community_join', new.community_id::text, 10); return null; end $$;
+drop trigger if exists trg_xp_community on public.community_members;
+create trigger trg_xp_community after insert on public.community_members for each row execute function public._xp_on_community();
+
+create or replace function public._xp_on_voice() returns trigger language plpgsql security definer set search_path = public as $$
+begin perform _award(new.user_id, 'voice', to_char(now() at time zone 'utc', 'YYYY-MM-DD') || ':' || new.room, 15); return null; end $$;
+drop trigger if exists trg_xp_voice on public.voice_participants;
+create trigger trg_xp_voice after insert on public.voice_participants for each row execute function public._xp_on_voice();
+
+create or replace function public._xp_on_entrant() returns trigger language plpgsql security definer set search_path = public as $$
+declare u uuid;
+begin
+  if tg_op = 'INSERT' then
+    foreach u in array new.members loop perform _award(u, 'tournament_enter', new.tournament_id::text, 30); end loop;
+  elsif new.final_place is distinct from old.final_place and new.final_place is not null then
+    foreach u in array new.members loop
+      perform _award(u, 'tournament_place', new.tournament_id::text, case new.final_place when 1 then 250 when 2 then 120 else 60 end);
+    end loop;
+  end if;
+  return null;
+end $$;
+drop trigger if exists trg_xp_entrant on public.tournament_entrants;
+create trigger trg_xp_entrant after insert or update on public.tournament_entrants for each row execute function public._xp_on_entrant();
+
+-- -----------------------------------------------------------------------------
+-- GG ENDORSEMENTS — only for people you actually partied with
+-- -----------------------------------------------------------------------------
+create table if not exists public.party_member_log (
+  party_id   uuid not null references public.parties(id) on delete cascade,
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  joined_at  timestamptz not null default now(),
+  primary key (party_id, user_id)
+);
+alter table public.party_member_log enable row level security;
+insert into public.party_member_log (party_id, user_id, joined_at)
+select party_id, user_id, joined_at from public.party_members on conflict do nothing;
+
+create or replace function public._log_party_member() returns trigger language plpgsql security definer set search_path = public as $$
+begin insert into party_member_log (party_id, user_id) values (new.party_id, new.user_id) on conflict do nothing; return null; end $$;
+drop trigger if exists trg_log_party_member on public.party_members;
+create trigger trg_log_party_member after insert on public.party_members for each row execute function public._log_party_member();
+
+create table if not exists public.endorsements (
+  id          bigint generated always as identity primary key,
+  giver_id    uuid not null references public.profiles(id) on delete cascade,
+  receiver_id uuid not null references public.profiles(id) on delete cascade,
+  party_id    uuid not null references public.parties(id) on delete cascade,
+  kind        text not null check (kind in ('great_comms','clutch','positive','shotcaller','teamplayer','chill')),
+  created_at  timestamptz not null default now(),
+  unique (giver_id, receiver_id, party_id),
+  check (giver_id <> receiver_id)
+);
+create index if not exists endorsements_receiver_idx on public.endorsements (receiver_id);
+alter table public.endorsements enable row level security;
+
+create or replace function public._endorsement_summary(p_user uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('total', (select count(*) from endorsements where receiver_id = p_user),
+    'by_kind', coalesce((select jsonb_object_agg(kind, n) from (select kind, count(*) n from endorsements where receiver_id = p_user group by kind) k), '{}'::jsonb))
+$$;
+
+create or replace function public.endorse(p_user uuid, p_party uuid, p_kind text) returns void
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_active();
+begin
+  if p_user = me then raise exception 'You can''t endorse yourself.'; end if;
+  if p_kind not in ('great_comms','clutch','positive','shotcaller','teamplayer','chill') then raise exception 'Pick an endorsement.'; end if;
+  if not exists (select 1 from party_member_log where party_id = p_party and user_id = me)
+     or not exists (select 1 from party_member_log where party_id = p_party and user_id = p_user) then
+    raise exception 'You can only endorse people you partied with.';
+  end if;
+  if _blocked(me, p_user) then raise exception 'You can''t endorse this player.'; end if;
+  perform _rate_limit('endorse', 30, interval '1 day', 'endorsements');
+  begin
+    insert into endorsements (giver_id, receiver_id, party_id, kind) values (me, p_user, p_party, p_kind);
+  exception when unique_violation then raise exception 'You already endorsed them for this party.';
+  end;
+  perform _award(me, 'endorse_give', p_user::text || ':' || p_party::text, 10);
+  perform _award(p_user, 'endorsed', me::text || ':' || p_party::text, 15);
+  perform _notify(p_user, 'endorsed', me, p_party, null, jsonb_build_object('kind', p_kind));
+end $$;
+
+-- Recent teammates you haven't endorsed yet (last 14 days of parties)
+create or replace function public.endorsable_teammates() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(x order by x ->> 'joined_at' desc), '[]'::jsonb) from (
+    select jsonb_build_object('party_id', p.id, 'party_title', p.title, 'game_id', p.game_id, 'joined_at', greatest(mine.joined_at, them.joined_at),
+                              'user', _card(them.user_id)) x
+    from party_member_log mine
+    join party_member_log them on them.party_id = mine.party_id and them.user_id <> mine.user_id
+    join parties p on p.id = mine.party_id
+    where mine.user_id = auth.uid() and greatest(mine.joined_at, them.joined_at) > now() - interval '14 days'
+      and not exists (select 1 from endorsements e where e.giver_id = auth.uid() and e.receiver_id = them.user_id and e.party_id = p.id)
+      and _card(them.user_id) is not null and not _blocked(auth.uid(), them.user_id)
+    order by greatest(mine.joined_at, them.joined_at) desc limit 12) q
+$$;
+
+-- -----------------------------------------------------------------------------
+-- READY-TO-PLAY BEACON — "I'm free for the next N minutes for <game>"
+-- -----------------------------------------------------------------------------
+create or replace function public.set_beacon(p_game text, p_minutes int default 60, p_note text default '') returns void
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_active(); was_on boolean; f uuid;
+begin
+  if not exists (select 1 from games where id = p_game and is_active) then raise exception 'Pick a game.'; end if;
+  if coalesce(p_minutes, 0) not between 15 and 240 then raise exception 'Beacons last 15 minutes to 4 hours.'; end if;
+  perform _rate_limit('beacon', 12, interval '1 day', 'beacons');
+  select beacon_until > now() into was_on from profiles where id = me;
+  update profiles set beacon_game = p_game, beacon_until = now() + make_interval(mins => p_minutes),
+    beacon_note = left(btrim(coalesce(p_note, '')), 80) where id = me;
+  perform _award(me, 'beacon', to_char(now() at time zone 'utc', 'YYYY-MM-DD'), 10);
+  -- Tell friends who play that game (once per beacon, not on extensions)
+  if not coalesce(was_on, false) then
+    for f in select case when fr.requester_id = me then fr.addressee_id else fr.requester_id end
+             from friendships fr where fr.status = 'accepted' and me in (fr.requester_id, fr.addressee_id) loop
+      if exists (select 1 from user_game_profiles g where g.user_id = f and g.game_id = p_game) then
+        perform _notify(f, 'beacon', me, null, null, jsonb_build_object('game', p_game,
+          'game_name', (select name from games where id = p_game), 'note', left(btrim(coalesce(p_note, '')), 80), 'minutes', p_minutes));
+      end if;
+    end loop;
+  end if;
+end $$;
+
+create or replace function public.clear_beacon() returns void
+language sql security definer set search_path = public as $$
+  update profiles set beacon_until = null where id = auth.uid()
+$$;
+
+create or replace function public.list_beacons(p_game text default null) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare me uuid := _require_user(); v profiles;
+begin
+  select * into v from profiles where id = me;
+  return coalesce((select jsonb_agg(x order by (x ->> 'is_friend')::boolean desc, coalesce((x -> 'compatibility' ->> 'score')::int, 0) desc, x ->> 'until')
+    from (
+      select _card(pp.id) || jsonb_build_object('game_id', pp.beacon_game, 'until', pp.beacon_until, 'note', pp.beacon_note,
+               'is_friend', _are_friends(me, pp.id),
+               'game', (select jsonb_build_object('id', g.id, 'name', g.name, 'short_name', g.short_name, 'accent_color', g.accent_color, 'genre', g.genre) from games g where g.id = pp.beacon_game),
+               'compatibility', case when exists (select 1 from user_game_profiles g where g.user_id = me and g.game_id = pp.beacon_game)
+                                     then _compat(me, pp.id, pp.beacon_game) end) x
+      from public_profiles pp
+      where pp.beacon_game is not null and pp.id <> me
+        and (p_game is null or pp.beacon_game = p_game)
+        and (v.show_demo_players or not pp.is_demo)
+      limit 60) q), '[]'::jsonb);
+end $$;
+
+-- -----------------------------------------------------------------------------
+-- DAILY QUESTS — 3 per day for everyone, picked from the pool by date
+-- -----------------------------------------------------------------------------
+create or replace function public._quest_pool() returns jsonb language sql immutable as $$
+  select '[
+    {"id":"party_join","kind":"party_join","target":1,"label":"Join a party","xp":50},
+    {"id":"chat_3","kind":"message","target":3,"label":"Chat in 3 different conversations","xp":40},
+    {"id":"endorse_2","kind":"endorse_give","target":2,"label":"Give 2 GG endorsements","xp":60},
+    {"id":"voice","kind":"voice","target":1,"label":"Hop into a voice channel or call","xp":50},
+    {"id":"friend","kind":"friend","target":1,"label":"Make a new friend","xp":50},
+    {"id":"community","kind":"community_join","target":1,"label":"Join a community","xp":40},
+    {"id":"beacon","kind":"beacon","target":1,"label":"Light your Ready beacon","xp":30},
+    {"id":"host","kind":"party_create","target":1,"label":"Host a party","xp":60}
+  ]'::jsonb
+$$;
+
+create or replace function public._todays_quests() returns jsonb language sql stable as $$
+  select coalesce(jsonb_agg(q order by o), '[]'::jsonb) from (
+    select q, row_number() over (order by md5(to_char(now() at time zone 'utc', 'YYYY-MM-DD') || (q ->> 'id'))) o
+    from jsonb_array_elements(public._quest_pool()) q) z where o <= 3
+$$;
+
+create or replace function public.my_progress() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare me uuid := _require_user(); x int; lvl int; day text := to_char(now() at time zone 'utc', 'YYYY-MM-DD');
+begin
+  select xp into x from profiles where id = me;
+  lvl := _level(x);
+  return jsonb_build_object('xp', x, 'level', lvl,
+    'level_floor', 50 * (lvl - 1) * (lvl - 1), 'next_level_at', 50 * lvl * lvl,
+    'day', day,
+    'quests', coalesce((select jsonb_agg(q || jsonb_build_object(
+        'progress', least((q ->> 'target')::int, (select count(*) from xp_events e where e.user_id = me and e.kind = q ->> 'kind'
+                                                    and e.created_at >= (date_trunc('day', now() at time zone 'utc') at time zone 'utc'))::int),
+        'claimed', exists (select 1 from xp_events e where e.user_id = me and e.kind = 'quest' and e.ref = day || ':' || (q ->> 'id'))))
+      from jsonb_array_elements(_todays_quests()) q), '[]'::jsonb),
+    'recent', coalesce((select jsonb_agg(jsonb_build_object('kind', kind, 'amount', amount, 'at', created_at) order by created_at desc)
+      from (select * from xp_events where user_id = me order by created_at desc limit 8) r), '[]'::jsonb));
+end $$;
+
+create or replace function public.claim_quest(p_quest text) returns int
+language plpgsql security definer set search_path = public as $$
+declare me uuid := _require_active(); q jsonb; day text := to_char(now() at time zone 'utc', 'YYYY-MM-DD'); n int;
+begin
+  select x into q from jsonb_array_elements(_todays_quests()) x where x ->> 'id' = p_quest;
+  if q is null then raise exception 'That quest isn''t available today.'; end if;
+  select count(*) into n from xp_events e where e.user_id = me and e.kind = q ->> 'kind'
+    and e.created_at >= (date_trunc('day', now() at time zone 'utc') at time zone 'utc');
+  if n < (q ->> 'target')::int then raise exception 'Finish the quest first (% of %).', n, q ->> 'target'; end if;
+  if exists (select 1 from xp_events where user_id = me and kind = 'quest' and ref = day || ':' || p_quest) then raise exception 'Already claimed.'; end if;
+  perform _award(me, 'quest', day || ':' || p_quest, (q ->> 'xp')::int);
+  return (q ->> 'xp')::int;
+end $$;
+
+-- Leaderboard: top players by XP (optionally among your friends)
+create or replace function public.leaderboard(p_scope text default 'global') returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare me uuid := _require_user(); v profiles;
+begin
+  select * into v from profiles where id = me;
+  return coalesce((select jsonb_agg(_card(pp.id) || jsonb_build_object('xp', pp.xp, 'rank', r) order by r) from (
+      select pp.*, row_number() over (order by pp.xp desc, pp.created_at) r from public_profiles pp
+      where pp.xp > 0 and (v.show_demo_players or not pp.is_demo)
+        and (p_scope <> 'friends' or pp.id = me or _are_friends(me, pp.id))
+      order by pp.xp desc limit 50) pp), '[]'::jsonb);
+end $$;
+
+-- Achievements now include endorsements, levels and tournaments
+create or replace function public._achievements(p_user uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  with s as (
+    select p.stat_parties_created c, p.stat_parties_joined j, p.created_at, p.xp,
+      (select count(*) from friendships f where f.status = 'accepted' and p_user in (f.requester_id, f.addressee_id)) fr,
+      (select count(*) from user_game_profiles g where g.user_id = p_user) gp,
+      (select count(*) from endorsements e where e.receiver_id = p_user) en,
+      (select count(*) from tournament_entrants e where p_user = any(e.members) and e.final_place = 1) wins,
+      (p.region is not null and cardinality(p.languages) > 0 and cardinality(p.availability) > 0 and p.mic_preference is not null and p.bio <> '') complete
+    from profiles p where p.id = p_user
+  )
+  select coalesce(jsonb_agg(a) filter (where (a ->> 'earned')::boolean), '[]'::jsonb) from s,
+  lateral (values
+    (jsonb_build_object('key','party_starter','label','Party Starter','description','Created a party','earned', s.c >= 1)),
+    (jsonb_build_object('key','squad_builder','label','Squad Builder','description','Created 10 parties','earned', s.c >= 10)),
+    (jsonb_build_object('key','team_player','label','Team Player','description','Joined 5 parties','earned', s.j >= 5)),
+    (jsonb_build_object('key','social','label','Social','description','Has 5 friends','earned', s.fr >= 5)),
+    (jsonb_build_object('key','well_connected','label','Well Connected','description','Has 25 friends','earned', s.fr >= 25)),
+    (jsonb_build_object('key','multi_gamer','label','Multi-Gamer','description','Plays 3+ games','earned', s.gp >= 3)),
+    (jsonb_build_object('key','profile_pro','label','Profile Pro','description','Completed every profile section','earned', s.complete)),
+    (jsonb_build_object('key','good_teammate','label','Good Teammate','description','Received 10 GG endorsements','earned', s.en >= 10)),
+    (jsonb_build_object('key','fan_favourite','label','Fan Favourite','description','Received 50 GG endorsements','earned', s.en >= 50)),
+    (jsonb_build_object('key','level_10','label','Double Digits','description','Reached level 10','earned', public._level(s.xp) >= 10)),
+    (jsonb_build_object('key','champion','label','Champion','description','Won a tournament','earned', s.wins >= 1)),
+    (jsonb_build_object('key','veteran','label','Veteran','description','Member for a year','earned', s.created_at < now() - interval '1 year'))
+  ) v(a)
+$$;
+
+revoke all on public.xp_events, public.party_member_log, public.endorsements from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+revoke execute on function public._award(uuid, text, text, integer), public._endorsement_summary(uuid), public._quest_pool(), public._todays_quests()
+  from public, anon, authenticated;
+do $$
+declare fn text;
+begin
+  foreach fn in array array[
+    'endorse(uuid,uuid,text)','endorsable_teammates()','set_beacon(text,integer,text)','clear_beacon()','list_beacons(text)',
+    'my_progress()','claim_quest(text)','leaderboard(text)','_level(integer)'
+  ] loop
+    execute format('revoke execute on function public.%s from public, anon', fn);
+    execute format('grant execute on function public.%s to authenticated', fn);
+  end loop;
 end $$;
 
 -- Pin search_path on every remaining PartyUp function (Supabase security advisor 0011).

@@ -1023,6 +1023,94 @@ def _():
     ok(f"select unblock_user('{H}')", P5)
 
 
+
+print("\nXP, quests, endorsements, beacons")
+
+
+@test("XP is awarded by the server once per action, levels up, and can't be self-set")
+def _():
+    u = make_user("xp_user"); f = make_user("xp_friend")
+    fails("update profiles set xp = 99999 where id = auth.uid()", u, "permission denied")
+    ok(f"select send_friend_request('{f}')", u); ok(f"select respond_friend_request('{u}', true)", f)
+    assert ok(f"select xp from profiles where id = '{u}'") == "25"
+    conv = ok(f"select get_or_create_direct_conversation('{f}')", u)
+    ok(f"select send_message('{conv}', 'hey')", u); ok(f"select send_message('{conv}', 'again')", u)
+    assert ok(f"select xp from profiles where id = '{u}'") == "30"  # one message award per conversation per day
+    pid = ok("select create_party(p_game => 'valorant', p_title => 'XP party', p_max_size => 5)", u)
+    x = int(ok(f"select xp from profiles where id = '{u}'"))
+    assert x >= 30 + 40 + 30, x  # create + auto-join
+    assert ok(f"select count(*) from notifications where user_id = '{u}' and type = 'level_up'") == "1"
+    prog = j("select my_progress()", u)
+    assert prog["level"] >= 2 and len(prog["quests"]) == 3 and prog["next_level_at"] > prog["xp"]
+
+
+@test("daily quests: progress is computed server-side and can be claimed once")
+def _():
+    u = make_user("quest_user")
+    prog = j("select my_progress()", u)
+    q = prog["quests"][0]
+    fails(f"select claim_quest('{q['id']}')", u, "finish the quest")
+    fails("select claim_quest('not_a_quest')", u, "isn't available")
+    # complete it by inserting the matching events directly (as the server would)
+    for i in range(q["target"]):
+        ok(f"select _award('{u}', '{q['kind']}', 'test{i}', 1)")
+    assert ok(f"select claim_quest('{q['id']}')", u) == str(q["xp"])
+    fails(f"select claim_quest('{q['id']}')", u, "already claimed")
+    assert next(x for x in j("select my_progress()", u)["quests"] if x["id"] == q["id"])["claimed"] is True
+    fails(f"select _award('{u}', 'quest', 'x', 500)", u, "permission denied")
+
+
+@test("GG endorsements only between people who partied together, once per party")
+def _():
+    a = make_user("gg_a"); b = make_user("gg_b"); c = make_user("gg_c")
+    pid = ok("select create_party(p_game => 'valorant', p_title => 'GG party', p_max_size => 5)", a)
+    iid = ok(f"select invite_to_party('{pid}', '{b}')", a); ok(f"select respond_party_invite('{iid}', true)", b)
+    team = j("select endorsable_teammates()", a)
+    assert [t["user"]["id"] for t in team] == [b]
+    fails(f"select endorse('{c}', '{pid}', 'clutch')", a, "partied with")
+    fails(f"select endorse('{a}', '{pid}', 'clutch')", a, "yourself")
+    fails(f"select endorse('{b}', '{pid}', 'toxic')", a, "pick an endorsement")
+    ok(f"select endorse('{b}', '{pid}', 'great_comms')", a)
+    fails(f"select endorse('{b}', '{pid}', 'clutch')", a, "already endorsed")
+    ok(f"select leave_party('{pid}')", b)
+    ok(f"select endorse('{a}', '{pid}', 'clutch')", b)  # still allowed after leaving
+    prof = j(f"select get_player_profile('{b}')", c)
+    assert prof["endorsements"]["total"] == 1 and prof["endorsements"]["by_kind"]["great_comms"] == 1
+    assert j("select endorsable_teammates()", a) == []
+    assert ok(f"select count(*) from notifications where user_id = '{b}' and type = 'endorsed'") == "1"
+    fails("select count(*) from endorsements", a, "permission denied")
+
+
+@test("Ready beacons: validated, notify friends who play the game, listed with compatibility, expire")
+def _():
+    a = make_user("beacon_a"); b = make_user("beacon_b"); c = make_user("beacon_c")
+    ok(f"select send_friend_request('{b}')", a); ok(f"select respond_friend_request('{a}', true)", b)
+    ok(f"insert into user_game_profiles (user_id, game_id) values ('{b}', 'valorant'), ('{c}', 'valorant')", None)
+    fails("select set_beacon('valorant', 5)", a, "15 minutes")
+    fails("select set_beacon('nope', 60)", a, "pick a game")
+    ok("select set_beacon('valorant', 60, 'need a duo for ranked')", a)
+    assert ok(f"select count(*) from notifications where user_id = '{b}' and type = 'beacon'") == "1"
+    ok("select set_beacon('valorant', 90)", a)  # extending doesn't re-notify
+    assert ok(f"select count(*) from notifications where user_id = '{b}' and type = 'beacon'") == "1"
+    lst = j("select list_beacons('valorant')", c)
+    me = next(x for x in lst if x["id"] == a)
+    assert me["note"] == "" and me["is_friend"] is False and me["compatibility"]["score"] >= 0
+    assert any(x["id"] == a and x["is_friend"] for x in j("select list_beacons()", b))
+    ok("update profiles set discoverable = false where id = auth.uid()", a)
+    assert not any(x["id"] == a for x in j("select list_beacons()", c))
+    ok("update profiles set discoverable = true where id = auth.uid()", a)
+    ok("select clear_beacon()", a)
+    assert not any(x["id"] == a for x in j("select list_beacons()", c))
+
+
+@test("leaderboard ranks by XP; friends scope")
+def _():
+    lb = j("select leaderboard()", A)
+    assert lb == sorted(lb, key=lambda x: -x["xp"]) and all(x["xp"] > 0 for x in lb)
+    fr = j("select leaderboard('friends')", A)
+    assert all(x["id"] == A or ok(f"select _are_friends('{A}', '{x['id']}')") == "t" for x in fr)
+
+
 print("\nAccount deletion")
 
 

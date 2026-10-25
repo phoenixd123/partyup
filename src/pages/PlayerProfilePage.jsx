@@ -1,3 +1,4 @@
+import { LevelBadge, EndorsementBadges, timeLeft } from '../components/Progress.jsx';
 import {
   LuUserPlus, LuUserCheck, LuUserMinus, LuClock, LuMessageCircle, LuUsers, LuFlag, LuBan, LuVolumeX, LuVolume2,
   LuEllipsis, LuMapPin, LuTrophy, LuPencil, LuUserX,
@@ -18,8 +19,9 @@ import AvailabilityGrid from '../components/AvailabilityGrid.jsx';
 
 export default function PlayerProfilePage({ params }) {
   const { profile: me } = useApp();
-  const { data: p, error, loading, reload } = useAsync(() => api.getPlayerProfile(params.id), [params.id]);
-  const actions = usePlayerActions(p || { id: params.id }, () => reload({ quiet: true }));
+  const id = params.id === 'me' ? me.id : params.id;
+  const { data: p, error, loading, reload } = useAsync(() => api.getPlayerProfile(id), [id]);
+  const actions = usePlayerActions(p || { id }, () => reload({ quiet: true }));
 
   if (loading && !p) return <PageLoader />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
@@ -42,7 +44,8 @@ export default function PlayerProfilePage({ params }) {
       <section className="profile-hero">
         <Avatar user={p} size={96} status={p.status} />
         <div className="profile-id">
-          <h1><Name user={p} /> {p.is_demo && <DemoBadge />}</h1>
+          <h1><Name user={p} /> <LevelBadge level={p.level} size="lg" /> {p.is_demo && <DemoBadge />}</h1>
+          {p.beacon && <div className="beacon-inline"><span className="live-dot" aria-hidden /> Ready to play now · {timeLeft(p.beacon.until)}{p.beacon.note ? ` — “${p.beacon.note}”` : ''}</div>}
           {(p.custom_status || p.status_emoji) && <div className="custom-status">{p.status_emoji} {p.custom_status}</div>}
           <div className="row gap-m wrap muted">
             <Presence user={p} />
@@ -148,6 +151,9 @@ export default function PlayerProfilePage({ params }) {
               </div>
             </Panel>
           )}
+          <Panel title={`GG endorsements${p.endorsements?.total ? ` (${p.endorsements.total})` : ''}`}>
+            <EndorsementBadges summary={p.endorsements} />
+          </Panel>
           <Panel title="Achievements">
             {p.achievements.length === 0 ? <p className="muted small pad">None earned yet. Achievements come from real activity on PartyUp.</p> : (
               <ul className="achievements">

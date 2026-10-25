@@ -1,3 +1,4 @@
+import { LevelBadge } from './Progress.jsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LuMessageCircle, LuUser } from 'react-icons/lu';
@@ -44,7 +45,7 @@ export default function ProfilePopover({ user, x, y, onClose }) {
       <div className="pop-body">
         <Avatar user={user} size={64} status={user.status} />
         <div>
-          <div className="pop-name"><Name user={user} /> {user.is_demo && <DemoBadge />}</div>
+          <div className="pop-name"><Name user={user} /> <LevelBadge level={user.level} /> {user.is_demo && <DemoBadge />}</div>
           {user.role && ROLE[user.role] && <span className="badge">{ROLE[user.role]}</span>}
           {(user.custom_status || user.status_emoji) && <div className="custom-status">{user.status_emoji} {user.custom_status}</div>}
           {user.status !== undefined && <Presence user={user} />}

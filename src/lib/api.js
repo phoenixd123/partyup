@@ -224,3 +224,13 @@ export const reportTournament = (id, category, description) =>
   rpc('report_tournament', { p_tournament: id, p_category: category, p_description: description });
 export const getOfficialCommunity = (gameId) =>
   unwrap(supabase.from('communities').select('id, name, member_count').eq('is_official', true).eq('game_id', gameId).maybeSingle());
+
+// ---------- XP, quests, endorsements, beacons ----------
+export const myProgress = () => rpc('my_progress');
+export const claimQuest = (id) => rpc('claim_quest', { p_quest: id });
+export const leaderboard = (scope = 'global') => rpc('leaderboard', { p_scope: scope });
+export const endorse = (user, party, kind) => rpc('endorse', { p_user: user, p_party: party, p_kind: kind });
+export const endorsableTeammates = () => rpc('endorsable_teammates');
+export const setBeacon = (game, minutes, note) => rpc('set_beacon', { p_game: game, p_minutes: minutes, p_note: note || '' });
+export const clearBeacon = () => rpc('clear_beacon');
+export const listBeacons = (game) => rpc('list_beacons', { p_game: game || null });

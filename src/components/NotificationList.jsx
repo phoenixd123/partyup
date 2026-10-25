@@ -57,6 +57,12 @@ export function describe(n) {
         : <>Update in {title}</>;
       return { text, to };
     }
+    case 'beacon': return { text: <><b>{who}</b> is ready to play <b>{n.data?.game_name}</b> now{n.data?.note ? ` — “${n.data.note}”` : ''}</>, to: n.actor ? `/players/${n.actor.id}` : '/ready' };
+    case 'endorsed': {
+      const k = { great_comms: 'Great comms', clutch: 'Clutch', positive: 'Positive vibes', shotcaller: 'Shotcaller', teamplayer: 'Team player', chill: 'Chill' }[n.data?.kind] || 'GG';
+      return { text: <><b>{who}</b> endorsed you: <b>{k}</b> 🙌</>, to: '/players/me' };
+    }
+    case 'level_up': return { text: <>Level up! You reached <b>level {n.data?.level}</b> 🎉</>, to: '/leaderboard', system: true };
     case 'report_update': return { text: n.data?.message || 'A moderator reviewed your report.', to: '/settings/safety', system: true };
     case 'moderation': return { text: n.data?.message || 'A moderator took action on your account.', to: null, system: true };
     default: return { text: n.type, to: null };

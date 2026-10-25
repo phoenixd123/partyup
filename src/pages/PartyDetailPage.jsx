@@ -1,3 +1,5 @@
+import { LevelBadge, EndorsePicker } from '../components/Progress.jsx';
+import { CallStage } from '../components/CallUI.jsx';
 import { useEffect, useState } from 'react';
 import {
   LuCrown, LuLogOut, LuPencil, LuUserPlus, LuX, LuCheck, LuLock, LuGlobe, LuMic, LuCalendar, LuEllipsis, LuUserMinus, LuArrowRightLeft, LuCircleOff, LuFlag, LuUsers,
@@ -9,14 +11,14 @@ import { Link, navigate } from '../lib/router.jsx';
 import { regionLabel, languageLabel, platformLabel } from '../lib/constants.js';
 import { sessionTime, timeAgo } from '../lib/format.js';
 import { Button, DemoBadge, EmptyState, ErrorState, Field, IconButton, Input, Menu, Modal, PageLoader, Panel, Select, Textarea, InlineError } from '../components/ui.jsx';
-import { Avatar, CompatBreakdown, GameTag, PartyStatus, Pips, Presence, SignalMeter } from '../components/gaming.jsx';
+import { Avatar, CompatBreakdown, GameTag, Name, PartyStatus, Pips, Presence, SignalMeter } from '../components/gaming.jsx';
 import { useConfirm, useToast } from '../components/feedback.jsx';
 import ChatThread from '../components/ChatThread.jsx';
 import PartyForm from '../components/PartyForm.jsx';
 import { ReportDialog } from '../components/PlayerActions.jsx';
 
 export default function PartyDetailPage({ params }) {
-  const { userId, refreshCounts, onNotify } = useApp();
+  const { userId, refreshCounts, onNotify, counts } = useApp();
   const toast = useToast();
   const confirm = useConfirm();
   const { data: p, error, loading, reload } = useAsync(() => api.getParty(params.id), [params.id]);
@@ -24,6 +26,7 @@ export default function PartyDetailPage({ params }) {
   const [inviting, setInviting] = useState(false);
   const [joining, setJoining] = useState(false);
   const [reporting, setReporting] = useState(null);
+  const [gg, setGg] = useState(null);
   const [busy, setBusy] = useState(null);
 
   useEffect(() => onNotify((ev) => { if (ev?.new?.party_id === params.id) reload({ quiet: true }); }), [onNotify, params.id, reload]);
@@ -114,7 +117,7 @@ export default function PartyDetailPage({ params }) {
                   <Link to={`/players/${m.id}`} className="row gap-s grow mini-link">
                     <Avatar user={m} size={38} status={m.status} />
                     <span>
-                      <strong>{m.username}{m.id === userId && ' (you)'} {m.id === p.leader_id && <LuCrown aria-label="Leader" className="crown" />}</strong>
+                      <strong><Name user={m} />{m.id === userId && ' (you)'} <LevelBadge level={m.level} /> {m.id === p.leader_id && <LuCrown aria-label="Leader" className="crown" />}</strong>
                       <span className="muted small block">{m.role ? `${m.role}, ` : ''}<Presence user={m} /></span>
                     </span>
                   </Link>
@@ -128,6 +131,9 @@ export default function PartyDetailPage({ params }) {
                   )}
                   {!isLeader && m.id !== userId && isMember && (
                     <IconButton icon={LuFlag} label={`Report ${m.username}`} onClick={() => setReporting(m)} />
+                  )}
+                  {isMember && m.id !== userId && !m.is_demo && (
+                    <Button size="sm" variant="ghost" className="gg-btn" onClick={() => setGg(m)}>GG</Button>
                   )}
                 </li>
               ))}
@@ -181,6 +187,10 @@ export default function PartyDetailPage({ params }) {
         </div>
 
         <div className="party-col chat-col">
+          {isMember && p.conversation_id && (
+            <CallStage room={`conv:${p.conversation_id}`} title={p.title} to={`/parties/${p.id}`} kind="call"
+              people={(counts.calls || []).find((x) => x.room === `conv:${p.conversation_id}`)?.participants || []} />
+          )}
           <Panel title="Party chat" className="chat-panel">
             {isMember ? (
               <PartyChat conversationId={p.conversation_id} members={p.members} />
@@ -198,6 +208,12 @@ export default function PartyDetailPage({ params }) {
       )}
       {inviting && <InviteFriends party={p} onClose={() => { setInviting(false); reload({ quiet: true }); }} />}
       {joining && <JoinDialog party={p} onClose={() => setJoining(false)} onJoined={() => { setJoining(false); reload({ quiet: true }); }} />}
+      {gg && (
+        <Modal open onClose={() => setGg(null)} title={`GG ${gg.username}`} size="sm">
+          <p className="muted small">What did they bring to the squad? They'll see it on their profile.</p>
+          <EndorsePicker user={gg} partyId={p.id} onDone={() => setGg(null)} />
+        </Modal>
+      )}
       {reporting && <ReportDialog player={reporting} partyId={p.id} onClose={() => setReporting(null)} />}
     </div>
   );

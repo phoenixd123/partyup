@@ -1,3 +1,4 @@
+import { ProgressPanel, ReadyNowPanel, GgPanel } from '../components/Progress.jsx';
 import { useEffect, useState } from 'react';
 import { LuZap, LuSearch, LuPlus, LuUsers, LuUserPlus, LuMailOpen, LuGamepad2, LuCrown, LuLightbulb, LuShuffle, LuX } from 'react-icons/lu';
 import { greeting, heroLine, randomLine } from '../lib/flavor.js';
@@ -112,6 +113,9 @@ export default function DashboardPage() {
             </div>
 
             <aside className="dash-side">
+              <ReadyNowPanel />
+              <ProgressPanel />
+              <GgPanel />
               <Panel title="Did you know?" action={<Button size="sm" variant="ghost" icon={LuShuffle} aria-label="Another one" onClick={() => setNote(randomLine())} />}>
                 <div className="note-card"><span className="note-ico"><LuLightbulb aria-hidden /></span><p>{note}</p></div>
               </Panel>

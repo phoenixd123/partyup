@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   LuHouse, LuSearch, LuUsers, LuUserPlus, LuMessageCircle, LuGamepad2, LuSettings, LuShieldCheck, LuBell, LuLogOut,
   LuChevronDown, LuCheck, LuMenu, LuX, LuZap, LuPlus, LuCompass, LuHash, LuMegaphone, LuLink, LuDoorOpen, LuBellOff,
-  LuSmile, LuUser, LuVolume2, LuMicOff, LuBadgeCheck, LuTrophy,
+  LuSmile, LuUser, LuVolume2, LuMicOff, LuBadgeCheck, LuTrophy, LuRadio, LuCrown,
 } from 'react-icons/lu';
 import { useCall } from '../../context/CallContext.jsx';
 import * as api from '../../lib/api.js';
@@ -35,7 +35,9 @@ const HOME_NAV = (counts, roles) => [
   { to: '/', label: 'Home', icon: LuHouse, exact: true },
   { to: '/players', label: 'Find Players', icon: LuSearch },
   { to: '/parties', label: 'Parties', icon: LuUsers, badge: counts.party_invites },
+  { to: '/ready', label: 'Ready Now', icon: LuRadio },
   { to: '/tournaments', label: 'Tournaments', icon: LuTrophy },
+  { to: '/leaderboard', label: 'Leaderboard', icon: LuCrown },
   { to: '/friends', label: 'Friends', icon: LuUserPlus, badge: counts.friend_requests },
   { to: '/messages', label: 'Messages', icon: LuMessageCircle, badge: counts.messages },
   { to: '/games', label: 'Game Profiles', icon: LuGamepad2 },
@@ -345,7 +347,7 @@ export default function AppShell({ path, children }) {
   const community = useCommunityData(communityId);
   const suspended = profile.suspended_until && new Date(profile.suspended_until) > new Date();
   const nav = HOME_NAV(counts, roles);
-  const bottom = [nav[0], nav[1], nav[2], nav[5], nav[3]];
+  const bottom = [nav[0], nav[3], nav[2], nav[7], nav[4]];
 
   return (
     <CommunityCtx.Provider value={{ community }}>

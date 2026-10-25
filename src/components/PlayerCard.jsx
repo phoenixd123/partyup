@@ -1,3 +1,5 @@
+import { LevelBadge } from './Progress.jsx';
+import { Name } from './gaming.jsx';
 import { LuUserPlus, LuUserCheck, LuClock, LuMessageCircle, LuCalendarClock, LuMapPin } from 'react-icons/lu';
 import { Link, navigate } from '../lib/router.jsx';
 import { regionLabel, languageLabel } from '../lib/constants.js';
@@ -18,7 +20,7 @@ export default function PlayerCard({ player, gameId, onChanged }) {
         <Link to={`/players/${player.id}`} className="pc-id">
           <Avatar user={player} size={48} status={player.status} />
           <span className="pc-name">
-            <strong>{player.username}</strong>
+            <strong><Name user={player} /> <LevelBadge level={player.level} />{player.beacon_game && <span className="live-dot" title="Ready to play now" />}</strong>
             <Presence user={player} />
           </span>
         </Link>

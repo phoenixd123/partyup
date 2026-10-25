@@ -9,6 +9,15 @@
 
 The installers aren't code-signed yet. Windows SmartScreen may say "Windows protected your PC" — choose **More info → Run anyway**. On macOS, right-click the app and choose **Open** the first time.
 
+## 1.4.0
+
+- **Ready Now beacons:** tap "I'm ready to play", pick a game and how long you're free. You show up on the live Ready Now board, and friends who play that game get a ping. See who's free right now, how well you fit, and message them in one click.
+- **GG endorsements:** after playing in a party, give teammates a GG — Great comms, Clutch, Positive vibes, Shotcaller, Team player or Chill. Only people who actually partied with you can endorse you, and they show on your profile.
+- **Levels & XP:** earn XP for playing with people (parties, chats, calls, tournaments, endorsements). Every action counts once, so it can't be farmed. Level badges show everywhere your name does.
+- **Daily quests:** three new quests every day with bonus XP and a celebration when you claim them.
+- **Leaderboard** with an animated podium, for everyone or just your friends.
+- Party calls right on the party page, new achievements (Good Teammate, Fan Favourite, Double Digits, Champion), and notifications for level-ups, endorsements and beacons.
+
 ## 1.3.1
 
 - **Motion everywhere:** smooth page transitions, cards that lift and cascade in, springy buttons, toasts and dialogs, shimmering loading placeholders, a bell that rings when something new arrives, pulsing online dots.

@@ -19,6 +19,13 @@ def db(sql):
     return subprocess.run(["psql", "-X", "-At", "-c", sql], env=ENV, capture_output=True, text=True).stdout.strip()
 
 
+def as_user(user, sql):
+    pre = f"set role authenticated; select set_config('request.jwt.claims', '{{\"sub\": \"{user}\", \"role\": \"authenticated\"}}', false);"
+    out = subprocess.run(["psql", "-X", "-At", "-v", "ON_ERROR_STOP=1"], input=pre + "\n" + sql, env=ENV, capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    return out.stdout.strip().splitlines()[-1]
+
+
 def step(name):
     steps.append(name); print(f"  · {name}", flush=True)
 
@@ -289,11 +296,58 @@ with sync_playwright() as p:
     expect(ben.get_by_text("Spooky Night Cup").first).to_be_visible()
     step("call and tournament notifications are readable")
 
+
+    print("Ready beacons, XP, quests, GG, leaderboard")
+    as_user(B, "insert into user_game_profiles (user_id, game_id) values (auth.uid(), 'valorant') on conflict do nothing")
+    as_user(A, "insert into user_game_profiles (user_id, game_id) values (auth.uid(), 'valorant') on conflict do nothing")
+    ava.goto(BASE + "#/")
+    ava.locator("#ready-now-h").locator("..").locator("..").get_by_role("button", name="I'm ready to play").click()
+    ava.get_by_label("Game").select_option("valorant")
+    ava.get_by_label("Note").fill("ranked duo, mic on")
+    ava.get_by_role("button", name="Go live").click()
+    toast(ava, "Beacon lit")
+    expect(ava.get_by_text("You're live")).to_be_visible()
+    ben.goto(BASE + "#/ready")
+    expect(ben.locator(".beacon-card", has_text="AvaHost")).to_be_visible()
+    expect(ben.locator(".beacon-card", has_text="ranked duo, mic on")).to_be_visible()
+    shot(ben, "12-ready-now")
+    ben.goto(BASE + "#/notifications")
+    expect(ben.get_by_text("is ready to play")).to_be_visible()
+    step("Ready beacon goes live, shows on the board and pings friends who play the game")
+
+    pid = as_user(A, "select create_party(p_game => 'valorant', p_title => 'GG Squad', p_max_size => 5)")
+    inv = as_user(A, f"select invite_to_party('{pid}', '{B}')")
+    as_user(B, f"select respond_party_invite('{inv}', true)")
+    ben.goto(BASE + f"#/parties/{pid}")
+    ben.locator(".member-list li", has_text="AvaHost").get_by_role("button", name="GG").click()
+    ben.get_by_role("button", name="Clutch").click()
+    toast(ben, "GG sent to AvaHost")
+    ava.goto(BASE + "#/players/me")
+    expect(ava.locator(".endorse-badge", has_text="Clutch")).to_be_visible()
+    step("GG endorsement from the party page shows on the profile")
+
+    ava.goto(BASE + "#/")
+    expect(ava.locator(".xp-box .lvl").first).to_be_visible()
+    expect(ava.locator(".quests li")).to_have_count(3)
+    q = db("select x ->> 'id' from jsonb_array_elements(public._todays_quests()) x limit 1")
+    kind = db(f"select x ->> 'kind' from jsonb_array_elements(public._todays_quests()) x where x ->> 'id' = '{q}'")
+    target = int(db(f"select x ->> 'target' from jsonb_array_elements(public._todays_quests()) x where x ->> 'id' = '{q}'"))
+    for i in range(target):
+        db(f"select public._award('{A}', '{kind}', 'e2e{i}', 1)")
+    ava.reload()
+    ava.locator(".quests li.done").first.get_by_role("button", name=re.compile("^Claim")).click()
+    toast(ava, "Quest complete")
+    shot(ava, "13-quests")
+    ava.goto(BASE + "#/leaderboard")
+    expect(ava.locator(".podium-spot").first).to_be_visible()
+    shot(ava, "14-leaderboard")
+    step("XP bar, daily quest claim, leaderboard podium")
+
     print("Mobile layout")
     m = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True).new_page(); watch(m, "mobile")
     m.goto(BASE); m.evaluate("t => localStorage.setItem('shim.session', t)", ava.evaluate("localStorage.getItem('shim.session')"))
     m.reload()
-    for route in ["#/tournaments", "#/tournaments/new", f"#/tournaments/{tid}", "#/settings/style", f"#/c/{val}/{lobby}", "#/explore", "#/tournaments/agreement"]:
+    for route in ["#/ready", "#/leaderboard", "#/", "#/tournaments", "#/tournaments/new", f"#/tournaments/{tid}", "#/settings/style", f"#/c/{val}/{lobby}", "#/explore", "#/tournaments/agreement"]:
         m.goto(BASE + route); m.wait_for_timeout(800)
         wide = m.evaluate("[...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && !e.closest('.nav-drawer,.filters,.toasts,.settings-nav,.side-panel,.season-decor,.bracket,.segmented')).slice(0,3).map(e => e.className || e.tagName)")
         assert not wide, f"overflow at {route}: {wide}"

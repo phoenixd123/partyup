@@ -1,3 +1,5 @@
+import ReadyNowPage from './pages/ReadyNowPage.jsx';
+import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import { useEffect } from 'react';
 import { useKonami } from './lib/easterEggs.js';
 import { isConfigured } from './lib/supabase.js';
@@ -52,6 +54,8 @@ const ROUTES = [
   ['/tournaments/new', CreateTournamentPage],
   ['/tournaments/agreement', TournamentAgreementPage],
   ['/tournaments/:id', TournamentPage],
+  ['/ready', ReadyNowPage],
+  ['/leaderboard', LeaderboardPage],
   ['/friends', FriendsPage],
   ['/messages', MessagesPage],
   ['/messages/:id', MessagesPage],
