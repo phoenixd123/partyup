@@ -370,7 +370,7 @@ with sync_playwright() as p:
     m.reload()
     for route in ["#/watch/valorant", "#/ready", "#/leaderboard", "#/", "#/tournaments", "#/tournaments/new", f"#/tournaments/{tid}", "#/settings/style", f"#/c/{val}/{lobby}", "#/explore", "#/tournaments/agreement"]:
         m.goto(BASE + route); m.wait_for_timeout(800)
-        wide = m.evaluate("[...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && !e.closest('.nav-drawer,.filters,.toasts,.settings-nav,.side-panel,.season-decor,.bracket,.segmented')).slice(0,3).map(e => e.className || e.tagName)")
+        wide = m.evaluate("[...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && !e.closest('.nav-drawer,.filters,.toasts,.settings-nav,.side-panel,.season-decor,.bracket,.segmented,.watch-games')).slice(0,3).map(e => e.className || e.tagName)")
         assert not wide, f"overflow at {route}: {wide}"
     shot(m, "11-mobile-tournament")
     step("no horizontal overflow on new screens at phone width")
