@@ -1,3 +1,4 @@
+import { celebrate } from '../lib/confetti.js';
 import { useState } from 'react';
 import { LuCompass, LuPlus, LuBadgeCheck } from 'react-icons/lu';
 import * as api from '../lib/api.js';
@@ -25,7 +26,7 @@ export default function ExplorePage() {
   const items = [...(res.data?.communities || []), ...extra];
   const join = async (c) => {
     setBusy(c.id);
-    try { await api.joinCommunity(c.id); refreshCounts(); toast(`Joined ${c.name}`); navigate(`/c/${c.id}`); }
+    try { await api.joinCommunity(c.id); refreshCounts(); toast(`Joined ${c.name}`); celebrate({ count: 70 }); navigate(`/c/${c.id}`); }
     catch (e) { toast(e, 'error'); setBusy(null); }
   };
   const more = async () => {

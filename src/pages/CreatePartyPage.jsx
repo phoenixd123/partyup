@@ -1,3 +1,4 @@
+import { celebrate } from '../lib/confetti.js';
 import * as api from '../lib/api.js';
 import { useAsync } from '../hooks/useAsync.js';
 import { useApp } from '../context/AppContext.jsx';
@@ -22,6 +23,7 @@ export default function CreatePartyPage() {
       p_visibility: v.visibility, p_scheduled_for: v.scheduled_for, p_my_role: v.my_role,
     });
     toast('Party created');
+    celebrate();
     navigate(`/parties/${id}`, { replace: true });
   };
 

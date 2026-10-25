@@ -1,3 +1,4 @@
+import { Radar } from '../components/Motion.jsx';
 import { useEffect, useState } from 'react';
 import { LuZap, LuGamepad2, LuLightbulb, LuPlus, LuSearch } from 'react-icons/lu';
 import * as api from '../lib/api.js';
@@ -39,7 +40,7 @@ export default function QuickMatchPage({ query }) {
           <Button icon={LuZap} onClick={() => res.reload()} loading={res.loading}>Run again</Button>
         </>} />
 
-      {res.error ? <ErrorState error={res.error} onRetry={res.reload} /> : !r || (res.loading && !r) ? <SkeletonCards count={3} /> : (
+      {res.error ? <ErrorState error={res.error} onRetry={res.reload} /> : !r || (res.loading && !r) ? <Radar /> : (
         <>
           {nothing && (
             <EmptyState icon={LuSearch} title={`No strong ${r.game_name} matches yet`}

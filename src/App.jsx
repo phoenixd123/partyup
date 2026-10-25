@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useKonami } from './lib/easterEggs.js';
 import { isConfigured } from './lib/supabase.js';
 import { useRoute, match, Redirect } from './lib/router.jsx';
 import { AppProvider, useApp } from './context/AppContext.jsx';
@@ -124,6 +125,8 @@ function Routed() {
   return <AppShell path={path}><NotFoundPage /></AppShell>;
 }
 
+function EasterEggs() { useKonami(); return null; }
+
 function SignedIn({ children }) {
   const { session, profile } = useApp();
   return session && profile?.onboarded_at ? children : null;
@@ -151,6 +154,7 @@ export default function App() {
           <Routed />
           <CallAudio />
           <SignedIn><IncomingCalls /></SignedIn>
+          <EasterEggs />
         </CallProvider>
       </AppProvider>
     </FeedbackProvider>

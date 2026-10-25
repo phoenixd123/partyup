@@ -2,7 +2,7 @@
   "name": "partyup",
   "productName": "PartyUp",
   "private": true,
-  "version": "1.3.0",
+  "version": "1.3.1",
   "type": "module",
   "description": "Find compatible teammates, form parties and chat. React + Supabase, with a desktop app.",
   "author": {

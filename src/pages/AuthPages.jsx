@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LuMailCheck, LuExternalLink } from 'react-icons/lu';
+import { LuMailCheck, LuExternalLink, LuTriangleAlert } from 'react-icons/lu';
 import { FcGoogle } from 'react-icons/fc';
 import { supabase, config, authRedirect, desktop } from '../lib/supabase.js';
 import { Link, navigate } from '../lib/router.jsx';
@@ -156,6 +156,7 @@ function VerifyCode({ email, kind, onBack }) {
   return (
     <div className="stack">
       <div className="notice"><LuMailCheck aria-hidden /><p>We sent a code to <b>{email}</b>. Type it below, or press the button in the email{desktop ? ' — it reopens PartyUp' : ''}.</p></div>
+      <div className="notice notice-warn" role="note"><LuTriangleAlert aria-hidden /><p><b>Don't see it?</b> Check your <b>spam or junk folder</b> — new emails from PartyUp often land there. Marking it "Not spam" makes sure future emails reach your inbox.</p></div>
       <form onSubmit={verify} className="stack">
         <Field label={kind === 'recovery' ? 'Reset code' : 'Verification code'} htmlFor="otp">
           <Input id="otp" className="otp-input" inputMode="numeric" autoComplete="one-time-code" maxLength={10} placeholder="••••••"
@@ -165,7 +166,7 @@ function VerifyCode({ email, kind, onBack }) {
         <Button type="submit" variant="primary" size="lg" loading={busy}>{kind === 'recovery' ? 'Continue' : 'Verify and continue'}</Button>
       </form>
       <p className="small muted">
-        No email? Check spam, or{' '}
+        Still nothing after a few minutes?{' '}
         {cooldown > 0 ? <span>send a new code in {cooldown}s</span> : <Button variant="link" onClick={resend}>send a new code</Button>}
         {resent && ' — sent!'}
         {onBack && <> · <Button variant="link" onClick={onBack}>use a different email</Button></>}

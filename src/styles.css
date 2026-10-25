@@ -1112,3 +1112,152 @@ body.season-halloween .logo-mark-stem { display: inline; }
 .season-decor .bats { position: absolute; left: 0; right: 0; top: 0; height: 60px; }
 .season-decor .bat { top: 8px !important; }
 .season-decor .bat:nth-child(2) { top: 26px !important; } .season-decor .bat:nth-child(3) { top: 40px !important; }
+.notice.notice-warn { border-color: #5b4a2a; background: #1f1a10; }
+.notice.notice-warn svg { color: var(--warn); }
+
+/* =========================================================================
+   Motion & personality layer
+   Springy but quick; everything is disabled under prefers-reduced-motion.
+   ========================================================================= */
+:root { --ease-out: cubic-bezier(.2, .8, .2, 1); --ease-spring: cubic-bezier(.34, 1.56, .64, 1); }
+
+/* Page transitions */
+.page-enter { animation: page-in .32s var(--ease-out) both; }
+.content.flush > .page-enter { flex: 1; display: flex; flex-direction: column; min-height: 0; animation-name: fade; animation-duration: .2s; }
+@keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* Page header icon chip */
+.page-head h1 { display: flex; align-items: center; gap: 10px; }
+.head-icon { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; flex: none;
+  background: linear-gradient(140deg, var(--accent), #b3245b); color: #fff; box-shadow: 0 6px 18px rgba(242, 107, 56, .28);
+  animation: head-pop .5s var(--ease-spring) both; }
+.head-icon svg { width: 18px; height: 18px; }
+@keyframes head-pop { from { transform: scale(.4) rotate(-20deg); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Buttons: tactile press, primary shine */
+.btn { transition: background .15s, border-color .15s, transform .12s var(--ease-out), box-shadow .2s; }
+.btn:active:not(:disabled) { transform: scale(.97); }
+.btn-primary { position: relative; overflow: hidden; }
+.btn-primary:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(242, 107, 56, .35); }
+.btn-primary::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.35) 50%, transparent 65%);
+  transform: translateX(-120%); pointer-events: none; }
+.btn-primary:hover:not(:disabled)::after { transition: transform .7s var(--ease-out); transform: translateX(120%); }
+.icon-btn { transition: background .15s, color .15s, transform .15s var(--ease-out); }
+.icon-btn:hover { transform: translateY(-1px); }
+.icon-btn:active { transform: scale(.92); }
+
+/* Cards lift and stagger in */
+.player-card, .party-card, .comm-card, .t-card, .gp-card, .t-team, .stat-tile {
+  transition: transform .2s var(--ease-out), box-shadow .2s, border-color .2s; }
+.player-card:hover, .party-card:hover, .comm-card:hover, .t-card:hover, .gp-card:hover, .stat-tile:hover {
+  transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0, 0, 0, .35); border-color: var(--line-2); }
+.card-grid > * { animation: card-in .45s var(--ease-out) both; }
+.card-grid > *:nth-child(2) { animation-delay: .04s; } .card-grid > *:nth-child(3) { animation-delay: .08s; }
+.card-grid > *:nth-child(4) { animation-delay: .12s; } .card-grid > *:nth-child(5) { animation-delay: .16s; }
+.card-grid > *:nth-child(6) { animation-delay: .2s; } .card-grid > *:nth-child(7) { animation-delay: .24s; }
+.card-grid > *:nth-child(8) { animation-delay: .28s; } .card-grid > *:nth-child(n+9) { animation-delay: .32s; }
+@keyframes card-in { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+
+/* Skeleton shimmer */
+.skeleton { animation: none; background: linear-gradient(90deg, var(--raised) 0%, #2a2c32 40%, var(--raised) 80%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
+@keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+
+/* Toasts, modals, menus */
+.toast { animation: toast-spring .42s var(--ease-spring) both; }
+@keyframes toast-spring { from { opacity: 0; transform: translateX(30px) scale(.95); } to { opacity: 1; transform: none; } }
+.toast > svg { animation: icon-pop .5s .1s var(--ease-spring) both; }
+@keyframes icon-pop { from { transform: scale(0); } to { transform: scale(1); } }
+.modal { animation: modal-in .28s var(--ease-spring) both; }
+@keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+.menu, .popover, .pop-card { animation: pop-in .18s var(--ease-out) both; transform-origin: top; }
+.menu-up { transform-origin: bottom; }
+@keyframes pop-in { from { opacity: 0; transform: scale(.95) translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* Navigation */
+.side-link { transition: background .15s, color .15s, transform .15s var(--ease-out); }
+.side-link:hover { transform: translateX(2px); }
+.side-link.active::before { content: ''; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); animation: bar-in .25s var(--ease-spring) both; }
+@keyframes bar-in { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.side-link:hover svg { animation: wiggle .4s ease; }
+@keyframes wiggle { 30% { transform: rotate(-10deg); } 60% { transform: rotate(8deg); } }
+.rail-btn { transition: border-radius .2s var(--ease-out), background .15s, transform .15s var(--ease-out); }
+.rail-btn:hover { transform: translateY(-1px); }
+.rail-item::before { transition: height .2s var(--ease-spring); }
+.nav-badge, .rail-mention, .dot-badge { animation: badge-pop .4s var(--ease-spring) both; }
+@keyframes badge-pop { from { transform: scale(0); } to { transform: scale(1); } }
+.segmented button { transition: background .15s, color .15s, box-shadow .2s; }
+.chip { transition: background .15s, border-color .15s, color .15s, transform .12s; }
+.chip:active { transform: scale(.95); }
+.bell.ringing .icon-btn svg { animation: bell-ring .9s ease both; transform-origin: top center; }
+@keyframes bell-ring { 10%, 30%, 50% { transform: rotate(14deg); } 20%, 40%, 60% { transform: rotate(-14deg); } 70% { transform: rotate(6deg); } 100% { transform: none; } }
+
+/* Presence */
+.status-dot.st-online { box-shadow: 0 0 0 0 rgba(63, 182, 123, .6); animation: online-pulse 2.6s ease-out infinite; }
+@keyframes online-pulse { 0% { box-shadow: 0 0 0 0 rgba(63,182,123,.55); } 70%, 100% { box-shadow: 0 0 0 5px rgba(63,182,123,0); } }
+
+/* Chat */
+.msg { animation: msg-in .22s var(--ease-out) both; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.reaction, .reactions button { animation: badge-pop .35s var(--ease-spring) both; transition: transform .12s; }
+.reactions button:active { transform: scale(.85); }
+
+/* Empty states: floating icon with glow */
+.empty-icon { position: relative; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; color: var(--accent);
+  background: radial-gradient(circle, rgba(242,107,56,.18), rgba(242,107,56,0) 70%); animation: float 3.2s ease-in-out infinite; }
+.empty-icon svg { width: 30px; height: 30px; }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+/* Dashboard */
+.dash-hero h1 { background: linear-gradient(90deg, #fff, #ffd2bf 40%, #fff 80%); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: name-shift 8s linear infinite; }
+.stat-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 4px 0 16px; }
+@media (max-width: 720px) { .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stat-tile { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; padding: 12px 14px;
+  border-radius: var(--r-lg); background: var(--panel); border: 1px solid var(--line); color: var(--text); text-decoration: none !important;
+  animation: card-in .45s var(--ease-out) both; animation-delay: calc(var(--i) * .06s); }
+.stat-ico { grid-row: span 2; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.stat-ico svg { width: 18px; height: 18px; }
+.stat-tile:nth-child(2) .stat-ico { background: rgba(110,168,255,.14); color: #6ea8ff; }
+.stat-tile:nth-child(3) .stat-ico { background: rgba(63,182,123,.14); color: #3fb67b; }
+.stat-tile:nth-child(4) .stat-ico { background: rgba(177,140,255,.14); color: #b18cff; }
+.stat-num { font-size: 1.35rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: .76rem; color: var(--muted); }
+.stat-tile:hover .stat-ico { animation: icon-pop .45s var(--ease-spring); }
+
+/* Quick Match radar */
+.radar-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 40px 16px; color: var(--text-2); }
+.radar { position: relative; width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle, rgba(63,182,123,.12), rgba(63,182,123,.02) 70%); border: 1px solid rgba(63,182,123,.35); overflow: hidden; }
+.radar-ring { position: absolute; inset: 0; margin: auto; border-radius: 50%; border: 1px solid rgba(63,182,123,.25); }
+.radar-ring.r1 { width: 33%; height: 33%; } .radar-ring.r2 { width: 66%; height: 66%; } .radar-ring.r3 { width: 100%; height: 100%; }
+.radar-sweep { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, rgba(63,182,123,.55), rgba(63,182,123,0) 70deg, transparent 360deg); animation: spin 2.2s linear infinite; }
+.radar-blip { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px; border-radius: 50%; background: #6fe0a6; box-shadow: 0 0 8px #6fe0a6;
+  transform: rotate(var(--a)) translateY(calc(var(--d) * -.9)); opacity: 0; animation: blip 2.2s ease-out infinite; }
+@keyframes blip { 0%, 60% { opacity: 0; } 70% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Tournament champion */
+.champ-banner { display: flex; align-items: center; gap: 14px; padding: 14px 18px; margin-bottom: 14px; border-radius: var(--r-lg);
+  background: linear-gradient(110deg, rgba(255,211,107,.18), rgba(242,107,56,.12)); border: 1px solid rgba(255,211,107,.45); animation: modal-in .5s var(--ease-spring) both; }
+.champ-banner small { display: block; color: #ffd36b; text-transform: uppercase; letter-spacing: .08em; font-size: .72rem; font-weight: 700; }
+.champ-banner strong { font-size: 1.25rem; }
+.champ-trophy { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: #ffd36b; color: #3a2600; animation: trophy-bounce 1.8s var(--ease-spring) infinite; }
+.champ-trophy svg { width: 26px; height: 26px; }
+@keyframes trophy-bounce { 0%, 100% { transform: translateY(0) rotate(0); } 15% { transform: translateY(-6px) rotate(-8deg); } 30% { transform: translateY(0) rotate(6deg); } 45% { transform: none; } }
+.bm { transition: border-color .2s, transform .2s var(--ease-out); animation: card-in .4s var(--ease-out) both; }
+.bm.st-ready { box-shadow: 0 0 0 1px rgba(63,182,123,.25); }
+.bm-row.win { animation: win-flash .9s ease; }
+@keyframes win-flash { 0% { background: rgba(63,182,123,.35); } 100% { background: transparent; } }
+
+/* Game icons */
+.game-icon { transition: transform .2s var(--ease-spring); }
+.t-card:hover .game-icon, .comm-card:hover .game-icon, .gp-card:hover .game-icon, .rail-btn:hover .game-icon { transform: rotate(-6deg) scale(1.06); }
+
+/* Misc */
+.confetti-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 200; }
+body.konami .logo-mark, body.konami .rail-btn.home svg { animation: spin 1s linear 3; }
+body.konami .dash-hero h1 { background-image: linear-gradient(90deg, #ff3d77, #ffd166, #3ddcff, #b18cff, #ff3d77); }
+.call-tile { transition: outline-color .12s, transform .2s var(--ease-out); animation: card-in .35s var(--ease-out) both; }
+.call-tile.speaking { transform: scale(1.01); }
+.incoming-call { animation: toast-spring .45s var(--ease-spring) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}

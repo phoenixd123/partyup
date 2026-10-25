@@ -1,3 +1,4 @@
+import { celebrate } from '../lib/confetti.js';
 import { useEffect, useState } from 'react';
 import { LuMessageCircle, LuUserMinus, LuUserPlus, LuUsers, LuInbox, LuEllipsis, LuBan } from 'react-icons/lu';
 import * as api from '../lib/api.js';
@@ -35,7 +36,8 @@ export default function FriendsPage({ query }) {
       const hit = r.players.find((p) => p.username.toLowerCase() === name.toLowerCase());
       if (!hit) throw new Error(`No player named ${name}. Check the spelling — usernames are exact.`);
       const res = await api.sendFriendRequest(hit.id);
-      toast(res === 'friends' ? `You and ${hit.username} are now friends` : `Friend request sent to ${hit.username}`);
+      toast(res === 'friends' ? `You and ${hit.username} are now friends 🤝` : `Friend request sent to ${hit.username}`);
+      if (res === 'friends') celebrate({ count: 80 });
       setAddName(''); reload({ quiet: true });
     } catch (ex) { toast(ex, 'error'); } finally { setAdding(false); }
   };
@@ -100,7 +102,7 @@ export default function FriendsPage({ query }) {
                     <li key={u.id} className="friend-row">
                       <Link to={`/players/${u.id}`} className="row gap-s grow mini-link"><Avatar user={u} size={42} /><span><strong>{u.username}</strong><span className="muted small block">{timeAgo(u.requested_at)}</span></span></Link>
                       <span className="row gap-xs">
-                        <Button size="sm" variant="primary" onClick={() => act(() => api.respondFriendRequest(u.id, true), `You and ${u.username} are now friends`)}>Accept</Button>
+                        <Button size="sm" variant="primary" onClick={() => { act(() => api.respondFriendRequest(u.id, true), `You and ${u.username} are now friends 🤝`); celebrate({ count: 80 }); }}>Accept</Button>
                         <Button size="sm" variant="ghost" onClick={() => act(() => api.respondFriendRequest(u.id, false), 'Request declined')}>Decline</Button>
                       </span>
                     </li>

@@ -303,6 +303,12 @@ function CustomStatusDialog({ onClose }) {
 function Bell() {
   const { counts, refreshCounts } = useApp();
   const [open, setOpen] = useState(false);
+  const [ring, setRing] = useState(0);
+  const prev = useRef(counts.notifications);
+  useEffect(() => {
+    if (counts.notifications > (prev.current || 0)) setRing((r) => r + 1);
+    prev.current = counts.notifications;
+  }, [counts.notifications]);
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return undefined;
@@ -313,7 +319,7 @@ function Bell() {
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', key); };
   }, [open]);
   return (
-    <div className="bell" ref={ref}>
+    <div className={cx('bell', ring > 0 && 'ringing')} ref={ref} key={`bell-${ring}`}>
       <IconButton icon={LuBell} label={`Notifications${counts.notifications ? ` (${counts.notifications} unread)` : ''}`}
         badge={counts.notifications} onClick={() => setOpen((o) => !o)} aria-expanded={open} />
       {open && (
@@ -371,7 +377,7 @@ export default function AppShell({ path, children }) {
               Your account is suspended until {new Date(profile.suspended_until).toLocaleString()}. You can browse, but you can't message, invite or join parties.
             </div>
           )}
-          <main className={cx('content', FLUSH(path) && 'flush')} id="main">{children}</main>
+          <main className={cx('content', FLUSH(path) && 'flush')} id="main"><div className="page-enter" key={path.split('/').slice(0, 3).join('/')}>{children}</div></main>
         </div>
         <nav className="bottom-nav" aria-label="Main">
           {bottom.map((item) => (

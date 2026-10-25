@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { LuZap, LuSearch, LuPlus, LuUsers, LuUserPlus, LuMailOpen, LuGamepad2, LuCrown, LuLightbulb, LuShuffle, LuX } from 'react-icons/lu';
 import { greeting, heroLine, randomLine } from '../lib/flavor.js';
+import { CountUp } from '../components/Motion.jsx';
+import { LuMessageCircle, LuFlag, LuCompass as LuCompassIcon } from 'react-icons/lu';
 import { Pumpkin, useSeason } from '../components/Seasonal.jsx';
 import * as api from '../lib/api.js';
 import { useAsync } from '../hooks/useAsync.js';
@@ -20,7 +22,7 @@ const MISSING = {
 };
 
 export default function DashboardPage() {
-  const { profile, onNotify, refreshCounts } = useApp();
+  const { profile, onNotify, refreshCounts, communities } = useApp();
   const toast = useToast();
   const { data, error, loading, reload } = useAsync(() => api.getDashboard(), []);
   useEffect(() => onNotify(() => reload({ quiet: true })), [onNotify, reload]);
@@ -48,6 +50,21 @@ export default function DashboardPage() {
           <Button size="lg" icon={LuPlus} onClick={() => navigate('/parties/new')}>Create party</Button>
         </div>
       </section>
+
+      <div className="stat-strip">
+        {[
+          { icon: LuUsers, label: 'Parties joined', value: profile.stat_parties_joined, to: '/parties' },
+          { icon: LuFlag, label: 'Parties hosted', value: profile.stat_parties_created, to: '/parties/new' },
+          { icon: LuMessageCircle, label: 'Messages sent', value: profile.stat_messages_sent, to: '/messages' },
+          { icon: LuCompassIcon, label: 'Communities', value: (communities || []).length, to: '/explore' },
+        ].map((st, i) => (
+          <Link key={st.label} to={st.to} className="stat-tile" style={{ '--i': i }}>
+            <span className="stat-ico"><st.icon aria-hidden /></span>
+            <span className="stat-num"><CountUp value={st.value || 0} /></span>
+            <span className="stat-label">{st.label}</span>
+          </Link>
+        ))}
+      </div>
 
       {season === 'halloween' && !bannerHidden && (
         <div className="season-banner">

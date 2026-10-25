@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { celebrate, bigCelebrate } from '../lib/confetti.js';
 import { useState } from 'react';
 import {
   LuTrophy, LuCalendarClock, LuUsers, LuFlag, LuPlay, LuX, LuShieldCheck, LuCrown, LuCircleAlert, LuCheck, LuSend, LuDoorOpen,
@@ -47,7 +49,7 @@ export default function TournamentPage({ params }) {
   const start = () => confirm({
     title: 'Start the tournament?', confirmLabel: 'Start now',
     body: `Sign-ups close and a bracket is drawn for ${t.entrant_count} ${t.team_size > 1 ? 'teams' : 'players'}. Incomplete teams are removed.`,
-    action: () => act(() => api.startTournament(t.id), 'Bracket is live'),
+    action: () => act(() => api.startTournament(t.id), 'Bracket is live 🔥'),
   });
   const cancel = () => confirm({
     title: 'Cancel this tournament?', danger: true, confirmLabel: 'Cancel tournament', requireText: null,
@@ -61,6 +63,7 @@ export default function TournamentPage({ params }) {
   });
 
   const prize = prizeLabel(t);
+  const champion = t.status === 'completed' && t.entrants.find((e) => e.final_place === 1);
   const rounds = Math.max(0, ...t.matches.map((m) => m.round));
   return (
     <div className="tourney">
@@ -88,6 +91,7 @@ export default function TournamentPage({ params }) {
           {!t.am_host && <Button variant="ghost" icon={LuFlag} onClick={() => setFlagging(true)}>Report</Button>}
         </div>
       </section>
+      {champion && <ChampionBanner t={t} champ={champion} mine={champion.members.some((u) => u.id === userId)} />}
       {t.status === 'cancelled' && <p className="banner banner-warn">This tournament was cancelled{t.cancel_reason ? `: ${t.cancel_reason}` : '.'}</p>}
 
       <Segmented ariaLabel="Section" value={view} onChange={setTab} options={[
@@ -176,6 +180,20 @@ export default function TournamentPage({ params }) {
       {registering && <RegisterDialog t={t} onClose={(ok) => { setRegistering(false); if (ok) res.reload({ quiet: true }); }} />}
       {reporting && <ReportMatchDialog t={t} m={reporting} entrants={entrants} userId={userId} onClose={(ok) => { setReporting(null); if (ok) res.reload({ quiet: true }); }} />}
       {flagging && <ReportTournamentDialog t={t} onClose={() => setFlagging(false)} />}
+    </div>
+  );
+}
+
+function ChampionBanner({ t, champ, mine }) {
+  useEffect(() => {
+    const key = `partyup.champ.${t.id}`;
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch { /* ignore */ }
+    if (mine) bigCelebrate(); else celebrate({ count: 90 });
+  }, [t.id, mine]);
+  return (
+    <div className={cx('champ-banner', mine && 'mine')}>
+      <span className="champ-trophy" aria-hidden><LuTrophy /></span>
+      <div><small>{mine ? 'You won!' : 'Champion'}</small><strong>{champ.team_name}</strong></div>
     </div>
   );
 }

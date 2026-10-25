@@ -1,3 +1,4 @@
+import { celebrate } from '../lib/confetti.js';
 import { useMemo, useState } from 'react';
 import { LuTrophy, LuShieldCheck } from 'react-icons/lu';
 import * as api from '../lib/api.js';
@@ -51,7 +52,7 @@ export default function CreateTournamentPage() {
     try {
       const prize_split = money ? f.split.map((a, i) => ({ place: i + 1, amount: Number(a) || 0 })).filter((x) => x.amount > 0) : [];
       const id = await api.createTournament({ ...f, starts_at: new Date(f.starts_at).toISOString(), prize_split, agreement_version: AGREEMENT_VERSION });
-      toast('Tournament created');
+      toast('Tournament created 🏆'); celebrate();
       navigate(`/tournaments/${id}`, { replace: true });
     } catch (ex) { setErr(ex); setBusy(false); }
   };

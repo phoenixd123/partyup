@@ -9,6 +9,15 @@
 
 The installers aren't code-signed yet. Windows SmartScreen may say "Windows protected your PC" — choose **More info → Run anyway**. On macOS, right-click the app and choose **Open** the first time.
 
+## 1.3.1
+
+- **Motion everywhere:** smooth page transitions, cards that lift and cascade in, springy buttons, toasts and dialogs, shimmering loading placeholders, a bell that rings when something new arrives, pulsing online dots.
+- **Icons on every page header**, animated empty states, and a radar sweep while Quick Match searches.
+- **Your stats** on the home screen with count-up numbers.
+- **Celebrations:** confetti when you finish setup, create a party or tournament, make a friend, join a community, or win a tournament (with a champion banner).
+- Verification and reset screens remind you to check your spam folder.
+- A secret for anyone who knows the code. ↑↑↓↓←→←→BA
+
 ## 1.3.0
 
 - **Voice & video calls:** call anyone from a DM, group chat or party chat (they get an incoming-call ring), and hang out in community **voice channels**. Mute, deafen, camera, screen share, speaking indicators, and the call keeps going while you move around the app.

@@ -1,3 +1,4 @@
+import { bigCelebrate } from '../lib/confetti.js';
 import { useEffect, useState } from 'react';
 import { LuCheck, LuLogOut } from 'react-icons/lu';
 import * as api from '../lib/api.js';
@@ -82,7 +83,8 @@ export default function OnboardingPage() {
       await saveStep();
       if (step === STEPS.length - 1) {
         await updateProfile({ onboarded_at: new Date().toISOString() });
-        toast(`Welcome to PartyUp, ${f.username.trim()}!`);
+        toast(`Welcome to PartyUp, ${f.username.trim()}! 🎉`);
+        bigCelebrate();
       } else setStep(step + 1);
     } catch (e) { setErr(e); } finally { setBusy(false); }
   };

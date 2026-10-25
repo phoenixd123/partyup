@@ -1,3 +1,4 @@
+import { LuSearch, LuUsers, LuPartyPopper, LuHeartHandshake, LuGamepad2, LuBell, LuSettings, LuZap, LuTrophy, LuSwords, LuCompass, LuShieldCheck, LuScale, LuMessageCircle } from 'react-icons/lu';
 import { FunLoader } from './Seasonal.jsx';
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -222,11 +223,18 @@ export function Menu({ trigger, items, align = 'right' }) {
   );
 }
 
-export function PageHeader({ title, sub, actions, children }) {
+const HEADER_ICONS = {
+  'Find Players': LuSearch, Parties: LuUsers, 'Create a party': LuPartyPopper, Friends: LuHeartHandshake, 'Game Profiles': LuGamepad2,
+  Notifications: LuBell, Settings: LuSettings, 'Quick Match': LuZap, Tournaments: LuTrophy, 'Host a tournament': LuSwords,
+  'Explore communities': LuCompass, Moderation: LuShieldCheck, 'PartyUp Tournament Agreement': LuScale, Messages: LuMessageCircle,
+};
+
+export function PageHeader({ title, sub, actions, children, icon }) {
+  const Icon = icon || (typeof title === 'string' ? HEADER_ICONS[title] : null);
   return (
     <div className="page-head">
       <div className="page-head-text">
-        <h1>{title}</h1>
+        <h1>{Icon && <span className="head-icon" aria-hidden><Icon /></span>}{title}</h1>
         {sub && <p className="sub">{sub}</p>}
       </div>
       {actions && <div className="page-actions">{actions}</div>}
